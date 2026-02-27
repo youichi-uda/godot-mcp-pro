@@ -1,0 +1,39 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/godot_mcp/ui/status_panel.gd" id="1"]
+
+[node name="MCPStatusPanel" type="VBoxContainer"]
+offset_right = 600.0
+offset_bottom = 200.0
+script = ExtResource("1")
+
+[node name="Header" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="StatusIcon" type="Label" parent="Header"]
+layout_mode = 2
+text = "●"
+theme_override_colors/font_color = Color(1, 0, 0, 1)
+
+[node name="StatusLabel" type="Label" parent="Header"]
+layout_mode = 2
+text = "MCP Server: Disconnected"
+
+[node name="Spacer" type="Control" parent="Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ClientCount" type="Label" parent="Header"]
+layout_mode = 2
+text = "Clients: 0"
+
+[node name="HSeparator" type="HSeparator" parent="."]
+layout_mode = 2
+
+[node name="LogScroll" type="ScrollContainer" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="LogContainer" type="VBoxContainer" parent="LogScroll"]
+layout_mode = 2
+size_flags_horizontal = 3

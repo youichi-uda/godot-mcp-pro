@@ -4,6 +4,7 @@
 
 [![Buy on Buy Me a Coffee](https://img.shields.io/badge/Buy-$5_one--time-478cbf?style=for-the-badge)](https://buymeacoffee.com/y1uda/e/512940)
 [![Website](https://img.shields.io/badge/Website-godot--mcp.abyo.net-478cbf?style=for-the-badge)](https://godot-mcp.abyo.net/)
+[![Discord](https://img.shields.io/badge/Discord-Support-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/F4gR739y)
 
 ## Architecture
 
@@ -76,6 +77,71 @@ Real-time bidirectional communication. No file polling. No CLI subprocess spawni
 | **Code Analysis** | Unused resources, Signal flow, Complexity | No |
 | **Profiling** | Yes | No |
 
+## Plugin Architecture
+
+The Godot editor plugin (`addons/godot_mcp/`) is the bridge between the MCP server and the Godot editor. It runs a WebSocket server inside the editor, receives commands from the MCP server, executes them using Godot's editor APIs, and returns results.
+
+```
+addons/godot_mcp/
+├── plugin.gd                  # EditorPlugin entry point - registers autoloads, starts WebSocket
+├── plugin.cfg                 # Plugin metadata (name, version, description)
+├── websocket_server.gd        # WebSocket server (port 6505-6509) - handles connections, routing
+├── command_router.gd          # Routes incoming commands to the correct command handler
+│
+├── commands/                  # 23 command handler modules (one per tool category)
+│   ├── base_command.gd        # Base class - provides success/error helpers, type parsing
+│   ├── project_commands.gd    # Project settings, file search, UID conversion
+│   ├── scene_commands.gd      # Scene tree, create/open/delete, play/stop
+│   ├── node_commands.gd       # Node CRUD, properties, signals, anchors
+│   ├── script_commands.gd     # Script list/read/create/edit, attach to nodes
+│   ├── editor_commands.gd     # Screenshots, visual diff, GDScript execution, error log
+│   ├── input_commands.gd      # Keyboard, mouse, InputAction simulation
+│   ├── runtime_commands.gd    # Game scene tree, runtime props, frame capture, UI detection
+│   ├── animation_commands.gd  # Animation creation, tracks, keyframes
+│   ├── animation_tree_commands.gd  # State machines, blend trees, transitions
+│   ├── tilemap_commands.gd    # Cell operations, tile set info
+│   ├── scene_3d_commands.gd   # Mesh, lighting, PBR materials, environment, cameras
+│   ├── physics_commands.gd    # Collision shapes, physics layers, raycasts
+│   ├── particle_commands.gd   # GPU particles 2D/3D, presets
+│   ├── navigation_commands.gd # Navigation regions, mesh baking, agents
+│   ├── audio_commands.gd      # Audio buses, effects, players
+│   ├── theme_commands.gd      # Theme colors, constants, font sizes, StyleBox
+│   ├── shader_commands.gd     # Shader create/edit, uniforms, material assignment
+│   ├── resource_commands.gd   # Generic .tres resource read/edit/create
+│   ├── batch_commands.gd      # Find by type, batch property set, cross-scene changes
+│   ├── test_commands.gd       # Automated test scenarios, assertions, stress testing
+│   ├── analysis_commands.gd   # Unused resources, signal flow, complexity analysis
+│   ├── export_commands.gd     # Export presets, export commands
+│   └── profiling_commands.gd  # Performance monitors (FPS, memory, draw calls)
+│
+├── utils/
+│   ├── node_utils.gd          # Node path resolution, scene tree traversal helpers
+│   └── property_parser.gd     # Smart type parsing (Vector2, Color, etc. from strings)
+│
+├── ui/
+│   ├── status_panel.gd        # Connection status indicator in editor dock
+│   └── status_panel.tscn      # Status panel scene
+│
+├── mcp_game_inspector_service.gd  # Autoload: runtime scene tree inspection during play
+├── mcp_screenshot_service.gd      # Autoload: captures screenshots during play
+└── mcp_input_service.gd           # Autoload: injects input events during play
+```
+
+### How It Works
+
+1. **Plugin activation** (`plugin.gd`): Registers 3 autoloads (GameInspector, Screenshot, InputService) and starts the WebSocket server
+2. **Connection** (`websocket_server.gd`): Listens on ports 6505-6509, maintains heartbeat (10s ping/pong), auto-reconnects with exponential backoff
+3. **Command routing** (`command_router.gd`): Parses incoming JSON commands and dispatches to the appropriate command handler
+4. **Command execution** (`commands/*.gd`): Each handler extends `BaseCommand`, which provides utilities like `success()`, `error()`, UndoRedo integration, and smart type parsing
+5. **Runtime tools** (autoload services): Three autoloads are injected into the running game to enable runtime inspection, screenshots, and input simulation without modifying the user's project code
+
+### Key Design Decisions
+
+- **All mutations use UndoRedo**: Every change to the scene tree goes through Godot's `EditorUndoRedoManager`, ensuring full undo/redo support
+- **Smart type parsing**: String values like `"Vector2(100,200)"`, `"#ff0000"`, `"Color(1,0,0,0.5)"` are automatically converted to native Godot types
+- **No project modification**: The 3 autoloads are registered/unregistered by the plugin at editor startup/shutdown — they don't appear in `project.godot`
+- **Port scanning**: The server tries ports 6505-6509 sequentially, allowing multiple Godot instances to run simultaneously
+
 ## Requirements
 
 - Godot 4.4+ (tested on 4.6)
@@ -110,6 +176,7 @@ Real-time bidirectional communication. No file polling. No CLI subprocess spawni
 
 - [Website](https://godot-mcp.abyo.net/)
 - [Buy ($5)](https://buymeacoffee.com/y1uda/e/512940)
+- [Discord](https://discord.gg/F4gR739y)
 - [Issues & Feature Requests](https://github.com/youichi-uda/godot-mcp-pro/issues)
 
 ## License
