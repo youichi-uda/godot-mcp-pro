@@ -6,6 +6,14 @@
 [![Website](https://img.shields.io/badge/Website-godot--mcp.abyo.net-478cbf?style=for-the-badge)](https://godot-mcp.abyo.net/)
 [![Discord](https://img.shields.io/badge/Discord-Support-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/F4gR739y)
 
+## Demo: AI Builds a Reversi Game from Scratch
+
+> One prompt → AI creates the scene, writes GDScript, launches the game, and play-tests it with mouse clicks.
+
+https://github.com/youichi-uda/godot-mcp-pro/releases/download/v1.3.1/demo.mp4
+
+[Watch the full 5-minute demo on YouTube](https://www.youtube.com/watch?v=0h2u6mMBm-Q)
+
 ## Architecture
 
 ```
