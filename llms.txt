@@ -1,0 +1,64 @@
+# Godot MCP Pro
+
+> 147 AI-powered tools connecting Claude, Cursor, and AI assistants to the Godot 4 editor via the Model Context Protocol (MCP).
+
+## Overview
+
+Godot MCP Pro is an MCP server that gives AI assistants real-time access to the Godot 4 editor through a WebSocket connection. The AI can create scenes, edit scripts, simulate player input, inspect running games, build 3D environments, set up physics, add particles, manage audio, and more — all from a single conversation.
+
+## Architecture
+
+AI Assistant <--stdio/MCP--> Node.js Server (TypeScript) <--WebSocket:6505--> Godot Editor Plugin (GDScript)
+
+The Godot plugin runs a WebSocket server inside the editor. The MCP server connects to it and translates MCP tool calls into editor commands. All mutations go through Godot's UndoRedo system.
+
+## 147 Tools across 23 Categories
+
+- Project (7): project info, filesystem tree, file search, project settings, UID conversion
+- Scene (9): scene tree, create/open/delete/save, play/stop, instancing
+- Node (11): add/delete/rename/duplicate/move, properties, signals, anchors, resources
+- Script (6): list/read/create/edit scripts, attach to nodes
+- Editor (9): screenshots, visual diff, GDScript execution, error log, signals inspector
+- Input Simulation (5): keyboard, mouse, InputAction, multi-event sequences
+- Runtime Analysis (15): game scene tree, runtime properties, frame capture, input recording/replay, UI detection
+- Animation (6): create animations, add tracks, insert keyframes
+- AnimationTree (8): state machines, transitions, blend trees, tree parameters
+- TileMap (6): set/fill/query cells, tile set info
+- 3D Scene (6): mesh primitives, .glb/.gltf import, lighting, PBR materials, environment, cameras, GridMap
+- Physics (6): collision shapes, physics layers, raycasts, body configuration
+- Particles (5): GPU particles 2D/3D, material config, color gradients, presets
+- Navigation (5): navigation regions, mesh baking, pathfinding agents, layer management
+- Audio (6): audio bus layout, effects, 2D/3D players
+- Theme & UI (6): colors, constants, font sizes, StyleBoxFlat
+- Shader (6): create/edit shaders, assign materials, set/get uniforms
+- Resource (3): read/edit/create .tres resource files
+- Batch & Refactoring (6): find by type, signal audit, batch property set, cross-scene changes
+- Testing & QA (5): automated test scenarios, assertions, stress testing
+- Code Analysis (6): unused resources, signal flow, scene complexity, circular dependencies
+- Profiling (2): FPS, memory, draw calls, physics monitors
+- Export (3): export presets, export commands
+
+## Requirements
+
+- Godot 4.4+ (tested on 4.6)
+- Node.js 18+
+- Any MCP-compatible AI client (Claude Code, Claude Desktop, Cursor, VS Code + Cline, Windsurf)
+
+## Setup
+
+1. Copy addons/godot_mcp/ into your Godot project
+2. Enable plugin: Project > Project Settings > Plugins > Godot MCP Pro
+3. Build MCP server: cd server && npm install && npm run build
+4. Add to .mcp.json: {"mcpServers": {"godot-mcp-pro": {"command": "node", "args": ["/path/to/server/build/index.js"]}}}
+
+## Pricing
+
+$5 one-time purchase. Lifetime updates for v1.x. Unlimited projects and machines.
+
+## Links
+
+- Website: https://godot-mcp.abyo.net/
+- Buy (itch.io): https://y1uda.itch.io/godot-mcp-pro
+- Buy (BMC): https://buymeacoffee.com/y1uda/e/512940
+- GitHub: https://github.com/youichi-uda/godot-mcp-pro
+- Discord: https://discord.gg/F4gR739y
