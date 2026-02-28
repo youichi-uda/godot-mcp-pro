@@ -1,6 +1,6 @@
 # Godot MCP Pro
 
-**147 AI-powered tools** connecting Claude, Cursor, and other AI assistants directly to your Godot 4 editor.
+**162 AI-powered tools** connecting Claude, Cursor, and other AI assistants directly to your Godot 4 editor.
 
 [![Buy on Buy Me a Coffee](https://img.shields.io/badge/Buy-$5_one--time-478cbf?style=for-the-badge)](https://buymeacoffee.com/y1uda/e/512940)
 [![Website](https://img.shields.io/badge/Website-godot--mcp.abyo.net-478cbf?style=for-the-badge)](https://godot-mcp.abyo.net/)
@@ -22,7 +22,7 @@ AI Assistant <--stdio/MCP--> Node.js Server <--WebSocket:6505--> Godot Editor Pl
 
 Real-time bidirectional communication. No file polling. No CLI subprocess spawning.
 
-## 147 Tools across 23 Categories
+## 162 Tools across 23 Categories
 
 | Category | Tools | Highlights |
 |----------|:-----:|------------|
@@ -66,7 +66,7 @@ Real-time bidirectional communication. No file polling. No CLI subprocess spawni
 
 | | Godot MCP Pro | Best Free Alternative |
 |---|:---:|:---:|
-| **Total Tools** | **147** | 32 |
+| **Total Tools** | **162** | 32 |
 | **Categories** | **23** | ~4 |
 | **Undo/Redo** | Yes | No |
 | **Signal Management** | Yes | No |
