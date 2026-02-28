@@ -10,6 +10,7 @@ func get_commands() -> Dictionary:
 		"edit_script": _edit_script,
 		"attach_script": _attach_script,
 		"get_open_scripts": _get_open_scripts,
+		"validate_script": _validate_script,
 	}
 
 
@@ -260,6 +261,38 @@ func _attach_script(params: Dictionary) -> Dictionary:
 		"node_path": str(root.get_path_to(node)),
 		"script_path": script_path,
 		"attached": true,
+	})
+
+
+func _validate_script(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "path")
+	if result[1] != null:
+		return result[1]
+	var path: String = result[0]
+
+	if not FileAccess.file_exists(path):
+		return error_not_found("Script '%s'" % path)
+
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return error_internal("Cannot read script: %s" % error_string(FileAccess.get_open_error()))
+
+	var source_code := file.get_as_text()
+	file.close()
+
+	var script := GDScript.new()
+	script.source_code = source_code
+	var err := script.reload()
+
+	if err == OK:
+		return success({"path": path, "valid": true, "message": "Script compiles successfully"})
+
+	return success({
+		"path": path,
+		"valid": false,
+		"error_code": err,
+		"error_string": error_string(err),
+		"message": "Compilation failed. Use get_output_log or get_editor_errors for details.",
 	})
 
 

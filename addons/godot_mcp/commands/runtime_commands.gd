@@ -22,6 +22,9 @@ func get_commands() -> Dictionary:
 		"find_ui_elements": _find_ui_elements,
 		"click_button_by_text": _click_button_by_text,
 		"wait_for_node": _wait_for_node,
+		"find_nearby_nodes": _find_nearby_nodes,
+		"navigate_to": _navigate_to,
+		"move_to": _move_to,
 	}
 
 
@@ -219,6 +222,69 @@ func _wait_for_node(params: Dictionary) -> Dictionary:
 		"timeout": timeout,
 		"poll_frames": poll_frames,
 	}, timeout + 2.0)
+
+
+func _find_nearby_nodes(params: Dictionary) -> Dictionary:
+	if not params.has("position"):
+		return error_invalid_params("Missing required parameter: position")
+
+	var cmd_params: Dictionary = {"position": params["position"]}
+	if params.has("radius"):
+		cmd_params["radius"] = float(params["radius"])
+	var type_filter: String = optional_string(params, "type_filter")
+	if not type_filter.is_empty():
+		cmd_params["type_filter"] = type_filter
+	var group_filter: String = optional_string(params, "group_filter")
+	if not group_filter.is_empty():
+		cmd_params["group_filter"] = group_filter
+	if params.has("max_results"):
+		cmd_params["max_results"] = int(params["max_results"])
+
+	return await _send_game_command("find_nearby_nodes", cmd_params)
+
+
+func _navigate_to(params: Dictionary) -> Dictionary:
+	if not params.has("target"):
+		return error_invalid_params("Missing required parameter: target")
+
+	var cmd_params: Dictionary = {"target": params["target"]}
+	var player_path: String = optional_string(params, "player_path")
+	if not player_path.is_empty():
+		cmd_params["player_path"] = player_path
+	var camera_path: String = optional_string(params, "camera_path")
+	if not camera_path.is_empty():
+		cmd_params["camera_path"] = camera_path
+	if params.has("move_speed"):
+		cmd_params["move_speed"] = float(params["move_speed"])
+
+	return await _send_game_command("navigate_to", cmd_params)
+
+
+func _move_to(params: Dictionary) -> Dictionary:
+	if not params.has("target"):
+		return error_invalid_params("Missing required parameter: target")
+
+	var cmd_params: Dictionary = {"target": params["target"]}
+	var player_path: String = optional_string(params, "player_path")
+	if not player_path.is_empty():
+		cmd_params["player_path"] = player_path
+	var camera_path: String = optional_string(params, "camera_path")
+	if not camera_path.is_empty():
+		cmd_params["camera_path"] = camera_path
+	if params.has("arrival_radius"):
+		cmd_params["arrival_radius"] = float(params["arrival_radius"])
+	if params.has("timeout"):
+		cmd_params["timeout"] = float(params["timeout"])
+	if params.has("run"):
+		cmd_params["run"] = bool(params["run"])
+	if params.has("look_at_target"):
+		cmd_params["look_at_target"] = bool(params["look_at_target"])
+
+	# Dynamic timeout: game-side timeout + overhead for IPC polling
+	var game_timeout: float = float(params.get("timeout", 15.0))
+	var ipc_timeout: float = game_timeout + 5.0
+
+	return await _send_game_command("move_to", cmd_params, ipc_timeout)
 
 
 # ── IPC Helper ────────────────────────────────────────────────────────────────

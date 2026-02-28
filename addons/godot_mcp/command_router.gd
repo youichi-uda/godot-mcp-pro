@@ -27,14 +27,15 @@ func _register_commands() -> void:
 		preload("res://addons/godot_mcp/commands/shader_commands.gd"),
 		preload("res://addons/godot_mcp/commands/export_commands.gd"),
 		preload("res://addons/godot_mcp/commands/resource_commands.gd"),
-		preload("res://addons/godot_mcp/commands/animation_tree_commands.gd"),
-		preload("res://addons/godot_mcp/commands/physics_commands.gd"),
+		preload("res://addons/godot_mcp/commands/input_map_commands.gd"),
 		preload("res://addons/godot_mcp/commands/scene_3d_commands.gd"),
-		preload("res://addons/godot_mcp/commands/particle_commands.gd"),
-		preload("res://addons/godot_mcp/commands/navigation_commands.gd"),
-		preload("res://addons/godot_mcp/commands/audio_commands.gd"),
-		preload("res://addons/godot_mcp/commands/test_commands.gd"),
+		preload("res://addons/godot_mcp/commands/physics_commands.gd"),
 		preload("res://addons/godot_mcp/commands/analysis_commands.gd"),
+		preload("res://addons/godot_mcp/commands/animation_tree_commands.gd"),
+		preload("res://addons/godot_mcp/commands/audio_commands.gd"),
+		preload("res://addons/godot_mcp/commands/navigation_commands.gd"),
+		preload("res://addons/godot_mcp/commands/particle_commands.gd"),
+		preload("res://addons/godot_mcp/commands/test_commands.gd"),
 	]
 
 	for cmd_class in command_classes:

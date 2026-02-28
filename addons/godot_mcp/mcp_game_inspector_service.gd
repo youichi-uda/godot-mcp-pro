@@ -5,7 +5,7 @@ extends Node
 const REQUEST_PATH := "user://mcp_game_request"
 const RESPONSE_PATH := "user://mcp_game_response"
 
-enum State { IDLE, CAPTURING_FRAMES, MONITORING, RECORDING }
+enum State { IDLE, CAPTURING_FRAMES, MONITORING, RECORDING, MOVING_TO }
 
 var _state: State = State.IDLE
 var _pending_command: bool = false  # Crash recovery flag
@@ -16,6 +16,9 @@ var _capture_frame_interval: int = 1
 var _capture_frame_counter: int = 0
 var _capture_half_res: bool = true
 var _captured_images: Array = []  # Array of base64 strings
+var _capture_node_path: String = ""  # Optional node to track per frame
+var _capture_node_props: Array = []  # Properties to snapshot per frame
+var _capture_frame_data: Array = []  # Array of per-frame node snapshots
 
 # Recording state
 var _recording_events: Array = []
@@ -29,6 +32,17 @@ var _monitor_frame_interval: int = 1
 var _monitor_frame_counter: int = 0
 var _monitor_timeline: Array = []  # Array of sample dicts
 
+# Move-to state
+var _moveto_target: Vector3 = Vector3.ZERO
+var _moveto_player: Node3D = null
+var _moveto_camera_pivot: Node3D = null
+var _moveto_arrival_radius: float = 1.5
+var _moveto_timeout: float = 15.0
+var _moveto_elapsed: float = 0.0
+var _moveto_run: bool = false
+var _moveto_look_at: bool = true
+var _moveto_keys_held: Array = []  # Track injected keys for guaranteed release
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -40,6 +54,10 @@ func _process(_delta: float) -> void:
 		push_warning("[MCP] Recovered from crashed command — writing error response")
 		_pending_command = false
 		_state = State.IDLE
+		# Signal editor plugin to auto-press debugger Continue
+		var flag := FileAccess.open("user://mcp_debugger_continue", FileAccess.WRITE)
+		if flag:
+			flag.close()
 		_write_response({"error": "Command crashed (runtime error). Check Godot debugger."})
 		return
 
@@ -54,6 +72,8 @@ func _process(_delta: float) -> void:
 		State.RECORDING:
 			if FileAccess.file_exists(REQUEST_PATH):
 				_handle_request()
+		State.MOVING_TO:
+			_process_move_to(_delta)
 
 
 # ── Request handling ──────────────────────────────────────────────────────────
@@ -109,8 +129,12 @@ func _handle_request() -> void:
 			_cmd_click_button_by_text(params)
 		"wait_for_node":
 			_cmd_wait_for_node(params)
-		"assert_node_state":
-			_cmd_assert_node_state(params)
+		"find_nearby_nodes":
+			_cmd_find_nearby_nodes(params)
+		"navigate_to":
+			_cmd_navigate_to(params)
+		"move_to":
+			_cmd_move_to(params)
 		_:
 			_write_response({"error": "Unknown command: %s" % command})
 
@@ -195,24 +219,16 @@ func _build_filtered_node_tree(node: Node, max_depth: int, script_filter: String
 
 
 func _node_matches_filter(node: Node, script_filter: String, type_filter: String, named_only: bool) -> bool:
-	# Check named_only: exclude nodes with auto-generated names (starting with "@")
 	if named_only and (node.name as String).begins_with("@"):
 		return false
-
-	# Check type_filter
 	if not type_filter.is_empty() and not node.is_class(type_filter):
 		return false
-
-	# Check script_filter
 	if not script_filter.is_empty():
 		var script: Script = node.get_script()
 		if script == null:
 			return false
 		if not script.resource_path.to_lower().contains(script_filter.to_lower()):
 			return false
-
-	# If no filters were active (all empty/false), the node doesn't "match" per se
-	# But this function is only called when has_filter is true, so at least one filter is active
 	return true
 
 
@@ -233,7 +249,6 @@ func _cmd_get_node_properties(params: Dictionary) -> void:
 	var props: Dictionary = {}
 
 	if filter.is_empty():
-		# Return all editor-visible properties
 		for prop_info in node.get_property_list():
 			var prop_name: String = prop_info["name"]
 			var usage: int = prop_info["usage"]
@@ -257,21 +272,29 @@ func _cmd_get_node_properties(params: Dictionary) -> void:
 # ── capture_frames ────────────────────────────────────────────────────────────
 
 func _cmd_capture_frames(params: Dictionary) -> void:
+	_pending_command = false  # Async command — don't trigger crash recovery
 	var count: int = clampi(params.get("count", 5), 1, 30)
 	var interval: int = maxi(params.get("frame_interval", 10), 1)
 	_capture_half_res = params.get("half_resolution", true)
+
+	# Optional node_data tracking
+	_capture_node_path = ""
+	_capture_node_props = []
+	_capture_frame_data.clear()
+	var node_data: Dictionary = params.get("node_data", {})
+	if not node_data.is_empty():
+		_capture_node_path = node_data.get("node_path", "")
+		_capture_node_props = node_data.get("properties", [])
 
 	_captured_images.clear()
 	_capture_frames_remaining = count
 	_capture_frame_interval = interval
 	_capture_frame_counter = 0
 	_state = State.CAPTURING_FRAMES
-	# Capture first frame immediately
 	_capture_one_frame()
 
 
 func _process_capture() -> void:
-	# Check for abort (new request arrived)
 	if FileAccess.file_exists(REQUEST_PATH):
 		_state = State.IDLE
 		_handle_request()
@@ -301,6 +324,16 @@ func _capture_one_frame() -> void:
 	var png_buffer := image.save_png_to_buffer()
 	_captured_images.append(Marshalls.raw_to_base64(png_buffer))
 
+	# Snapshot node properties if tracking
+	if not _capture_node_path.is_empty() and not _capture_node_props.is_empty():
+		var snap := {}
+		var node := get_tree().root.get_node_or_null(_capture_node_path)
+		if node:
+			for prop_name in _capture_node_props:
+				var val = node.get(prop_name)
+				snap[prop_name] = _serialize_value(val)
+		_capture_frame_data.append(snap)
+
 	_capture_frames_remaining -= 1
 	if _capture_frames_remaining <= 0:
 		_finish_capture()
@@ -318,19 +351,24 @@ func _finish_capture() -> void:
 		w = int(size.x)
 		h = int(size.y)
 
-	_write_response({
+	var response := {
 		"frames": _captured_images,
 		"count": _captured_images.size(),
 		"width": w,
 		"height": h,
 		"half_resolution": _capture_half_res,
-	})
+	}
+	if not _capture_frame_data.is_empty():
+		response["frame_data"] = _capture_frame_data
+	_write_response(response)
 	_captured_images.clear()
+	_capture_frame_data.clear()
 
 
 # ── monitor_properties ────────────────────────────────────────────────────────
 
 func _cmd_monitor_properties(params: Dictionary) -> void:
+	_pending_command = false  # Async command — don't trigger crash recovery
 	_monitor_node_path = params.get("node_path", "")
 	_monitor_properties = params.get("properties", [])
 	if _monitor_node_path.is_empty() or _monitor_properties.is_empty():
@@ -345,12 +383,10 @@ func _cmd_monitor_properties(params: Dictionary) -> void:
 	_monitor_frame_interval = interval
 	_monitor_frame_counter = 0
 	_state = State.MONITORING
-	# Sample first frame immediately
 	_sample_one_frame()
 
 
 func _process_monitor() -> void:
-	# Check for abort
 	if FileAccess.file_exists(REQUEST_PATH):
 		_state = State.IDLE
 		_handle_request()
@@ -430,30 +466,57 @@ func _cmd_set_node_property(params: Dictionary) -> void:
 
 
 func _parse_value_for_type(raw: Variant, target_type: int) -> Variant:
-	# If the raw value is already the right type, return as-is
 	if typeof(raw) == target_type:
 		return raw
 
-	# If raw is a string, try to parse it using Expression (handles Vector2(...), Color(...), etc.)
+	# Handle Dictionary → Vector2/Vector3/Color conversion
+	if raw is Dictionary:
+		var dict: Dictionary = raw
+		match target_type:
+			TYPE_VECTOR3:
+				return Vector3(
+					float(dict.get("x", 0)),
+					float(dict.get("y", 0)),
+					float(dict.get("z", 0))
+				)
+			TYPE_VECTOR3I:
+				return Vector3i(
+					int(dict.get("x", 0)),
+					int(dict.get("y", 0)),
+					int(dict.get("z", 0))
+				)
+			TYPE_VECTOR2:
+				return Vector2(
+					float(dict.get("x", 0)),
+					float(dict.get("y", 0))
+				)
+			TYPE_VECTOR2I:
+				return Vector2i(
+					int(dict.get("x", 0)),
+					int(dict.get("y", 0))
+				)
+			TYPE_COLOR:
+				return Color(
+					float(dict.get("r", 0)),
+					float(dict.get("g", 0)),
+					float(dict.get("b", 0)),
+					float(dict.get("a", 1))
+				)
+		return raw
+
 	if raw is String:
 		var raw_str: String = raw
-
-		# Handle hex color strings like "#ff0000"
 		if raw_str.begins_with("#"):
 			return Color.html(raw_str)
 
-		# Try Expression evaluation for Godot type constructors
 		var expr := Expression.new()
 		var err := expr.parse(raw_str)
 		if err == OK:
 			var result: Variant = expr.execute()
 			if not expr.has_execute_failed():
 				return result
-
-		# Fallback: return string as-is
 		return raw_str
 
-	# Numeric conversions
 	if raw is float and target_type == TYPE_INT:
 		return int(raw)
 	if raw is int and target_type == TYPE_FLOAT:
@@ -470,7 +533,6 @@ func _cmd_execute_script(params: Dictionary) -> void:
 		_write_response({"error": "code is required"})
 		return
 
-	# Wrap user code with error-safe helpers
 	var wrapped := """extends Node
 
 var _mcp_output: Array = []
@@ -545,7 +607,6 @@ func _find_nodes_by_script_recursive(node: Node, script_filter: String, prop_fil
 		}
 		var props: Dictionary = {}
 		if prop_filter.is_empty():
-			# Return all editor-visible script variables
 			for prop_info in node.get_property_list():
 				var prop_name: String = prop_info["name"]
 				var usage: int = prop_info["usage"]
@@ -823,67 +884,392 @@ func _cmd_wait_for_node(params: Dictionary) -> void:
 	})
 
 
-# ── assert_node_state ────────────────────────────────────────────────────────
+# ── find_nearby_nodes ─────────────────────────────────────────────────────────
 
-func _cmd_assert_node_state(params: Dictionary) -> void:
-	var node_path: String = params.get("node_path", "")
-	var property: String = params.get("property", "")
-	var operator: String = params.get("operator", "eq")
+func _cmd_find_nearby_nodes(params: Dictionary) -> void:
+	var radius: float = float(params.get("radius", 20.0))
+	var max_results: int = int(params.get("max_results", 10))
+	var type_filter: String = params.get("type_filter", "")
+	var group_filter: String = params.get("group_filter", "")
 
-	if node_path.is_empty() or property.is_empty():
-		_write_response({"error": "'node_path' and 'property' are required"})
+	# Resolve origin position
+	var origin := Vector3.ZERO
+	var position_param: Variant = params.get("position", null)
+	if position_param is String:
+		# node_path — use its global_position
+		var origin_node := get_node_or_null(NodePath(position_param as String))
+		if origin_node == null:
+			_write_response({"error": "Origin node not found: %s" % position_param})
+			return
+		if origin_node is Node3D:
+			origin = (origin_node as Node3D).global_position
+		elif origin_node is Node2D:
+			var pos2d: Vector2 = (origin_node as Node2D).global_position
+			origin = Vector3(pos2d.x, pos2d.y, 0)
+		else:
+			_write_response({"error": "Origin node is not Node2D or Node3D: %s" % position_param})
+			return
+	elif position_param is Dictionary:
+		var dict: Dictionary = position_param
+		origin = Vector3(float(dict.get("x", 0)), float(dict.get("y", 0)), float(dict.get("z", 0)))
+	elif position_param == null:
+		_write_response({"error": "'position' is required (node_path string or {x,y,z} object)"})
 		return
 
-	if not params.has("expected"):
-		_write_response({"error": "'expected' is required"})
+	var root := get_tree().current_scene
+	if root == null:
+		_write_response({"error": "No current scene"})
 		return
 
-	var expected = params["expected"]
+	# Collect all spatial nodes within radius
+	var candidates: Array = []
+	_find_nearby_recursive(root, origin, radius, type_filter, group_filter, candidates)
 
-	var node := get_node_or_null(NodePath(node_path))
-	if node == null:
+	# Sort by distance
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return a["distance"] < b["distance"]
+	)
+
+	# Limit results
+	if candidates.size() > max_results:
+		candidates.resize(max_results)
+
+	_write_response({
+		"origin": {"x": origin.x, "y": origin.y, "z": origin.z},
+		"radius": radius,
+		"nodes": candidates,
+		"count": candidates.size(),
+	})
+
+
+func _find_nearby_recursive(node: Node, origin: Vector3, radius: float, type_filter: String, group_filter: String, results: Array) -> void:
+	var pos := Vector3.ZERO
+	var is_spatial := false
+
+	if node is Node3D:
+		pos = (node as Node3D).global_position
+		is_spatial = true
+	elif node is Node2D:
+		var pos2d: Vector2 = (node as Node2D).global_position
+		pos = Vector3(pos2d.x, pos2d.y, 0)
+		is_spatial = true
+
+	if is_spatial:
+		var diff := pos - origin
+		var dist := diff.length()
+		if dist <= radius:
+			# Apply filters
+			var passes := true
+			if not type_filter.is_empty() and not node.is_class(type_filter):
+				passes = false
+			if not group_filter.is_empty() and not node.is_in_group(group_filter):
+				passes = false
+
+			if passes:
+				var entry: Dictionary = {
+					"node_path": str(node.get_path()),
+					"name": str(node.name),
+					"type": node.get_class(),
+					"distance": snappedf(dist, 0.01),
+					"global_position": {"x": snappedf(pos.x, 0.01), "y": snappedf(pos.y, 0.01), "z": snappedf(pos.z, 0.01)},
+					"direction": {"x": snappedf(diff.x, 0.01), "y": snappedf(diff.y, 0.01), "z": snappedf(diff.z, 0.01)},
+				}
+				var script: Script = node.get_script()
+				if script:
+					entry["script"] = script.resource_path
+				results.append(entry)
+
+	for child in node.get_children():
+		_find_nearby_recursive(child, origin, radius, type_filter, group_filter, results)
+
+
+# ── navigate_to ──────────────────────────────────────────────────────────────
+
+func _cmd_navigate_to(params: Dictionary) -> void:
+	# Resolve player position
+	var player_path: String = params.get("player_path", "/root/Main/Player")
+	var player := get_node_or_null(NodePath(player_path))
+	if player == null:
+		_write_response({"error": "Player not found: %s" % player_path})
+		return
+
+	var player_pos := Vector3.ZERO
+	if player is Node3D:
+		player_pos = (player as Node3D).global_position
+	else:
+		_write_response({"error": "Player is not Node3D: %s" % player_path})
+		return
+
+	# Resolve target position
+	var target_param: Variant = params.get("target", null)
+	var target_pos := Vector3.ZERO
+	if target_param is String:
+		var target_node := get_node_or_null(NodePath(target_param as String))
+		if target_node == null:
+			_write_response({"error": "Target node not found: %s" % target_param})
+			return
+		if target_node is Node3D:
+			target_pos = (target_node as Node3D).global_position
+		else:
+			_write_response({"error": "Target is not Node3D: %s" % target_param})
+			return
+	elif target_param is Dictionary:
+		var dict: Dictionary = target_param
+		target_pos = Vector3(float(dict.get("x", 0)), float(dict.get("y", 0)), float(dict.get("z", 0)))
+	else:
+		_write_response({"error": "'target' is required (node_path string or {x,y,z} object)"})
+		return
+
+	# Calculate world direction (XZ plane for 3D movement)
+	var world_dir := target_pos - player_pos
+	var distance := world_dir.length()
+	var flat_dir := Vector3(world_dir.x, 0, world_dir.z).normalized()
+
+	# Find camera for relative direction
+	var camera_path: String = params.get("camera_path", "")
+	var camera: Camera3D = null
+	if not camera_path.is_empty():
+		var cam_node := get_node_or_null(NodePath(camera_path))
+		if cam_node is Camera3D:
+			camera = cam_node
+	else:
+		# Auto-detect: find Camera3D in scene
+		camera = get_viewport().get_camera_3d()
+
+	var suggested_keys: Array = []
+	var camera_yaw_delta: float = 0.0
+	var camera_forward := Vector3.ZERO
+
+	if camera != null:
+		# Camera forward (XZ plane)
+		camera_forward = -camera.global_basis.z
+		var cam_flat := Vector3(camera_forward.x, 0, camera_forward.z).normalized()
+		var cam_right := Vector3(camera_forward.z, 0, -camera_forward.x).normalized()
+
+		if flat_dir.length() > 0.01:
+			# Project target direction onto camera axes
+			var forward_dot := flat_dir.dot(cam_flat)
+			var right_dot := flat_dir.dot(cam_right)
+
+			# Suggest keys based on dominant direction
+			if forward_dot > 0.3:
+				suggested_keys.append("KEY_W")
+			elif forward_dot < -0.3:
+				suggested_keys.append("KEY_S")
+			if right_dot > 0.3:
+				suggested_keys.append("KEY_D")
+			elif right_dot < -0.3:
+				suggested_keys.append("KEY_A")
+
+			# Calculate yaw rotation needed to face target directly (W only)
+			var angle_to_target := atan2(flat_dir.x, flat_dir.z)
+			var cam_yaw := atan2(cam_flat.x, cam_flat.z)
+			camera_yaw_delta = angle_to_target - cam_yaw
+			# Normalize to [-PI, PI]
+			while camera_yaw_delta > PI:
+				camera_yaw_delta -= TAU
+			while camera_yaw_delta < -PI:
+				camera_yaw_delta += TAU
+
+	# Estimate walk duration (rough: assume ~5 units/sec movement speed)
+	var move_speed: float = float(params.get("move_speed", 5.0))
+	var estimated_duration := distance / move_speed if move_speed > 0 else 0.0
+
+	# Convert yaw delta to approximate mouse relative_x pixels
+	# Typical: 400px mouse movement ≈ PI radians
+	var mouse_sensitivity_scale: float = 400.0 / PI
+	var suggested_mouse_x := -camera_yaw_delta * mouse_sensitivity_scale
+
+	_write_response({
+		"distance": snappedf(distance, 0.01),
+		"world_direction": {
+			"x": snappedf(world_dir.x, 0.01),
+			"y": snappedf(world_dir.y, 0.01),
+			"z": snappedf(world_dir.z, 0.01),
+		},
+		"flat_direction": {
+			"x": snappedf(flat_dir.x, 0.01),
+			"z": snappedf(flat_dir.z, 0.01),
+		},
+		"suggested_keys": suggested_keys,
+		"camera_rotation_delta": {
+			"yaw_radians": snappedf(camera_yaw_delta, 0.001),
+			"suggested_mouse_relative_x": snappedf(suggested_mouse_x, 1.0),
+		},
+		"estimated_duration": snappedf(estimated_duration, 0.1),
+		"player_position": {"x": snappedf(player_pos.x, 0.01), "y": snappedf(player_pos.y, 0.01), "z": snappedf(player_pos.z, 0.01)},
+		"target_position": {"x": snappedf(target_pos.x, 0.01), "y": snappedf(target_pos.y, 0.01), "z": snappedf(target_pos.z, 0.01)},
+	})
+
+
+# ── move_to ───────────────────────────────────────────────────────────────────
+
+func _cmd_move_to(params: Dictionary) -> void:
+	# Resolve player node
+	var player_path: String = params.get("player_path", "/root/Main/Player")
+	var player := get_node_or_null(NodePath(player_path))
+	if player == null or not player is Node3D:
+		_write_response({"error": "Player not found or not Node3D: %s" % player_path})
+		return
+
+	_moveto_player = player as Node3D
+
+	# Resolve target position
+	var target_param: Variant = params.get("target", null)
+	if target_param is String:
+		var target_node := get_node_or_null(NodePath(target_param as String))
+		if target_node == null:
+			_write_response({"error": "Target node not found: %s" % target_param})
+			return
+		if target_node is Node3D:
+			_moveto_target = (target_node as Node3D).global_position
+		else:
+			_write_response({"error": "Target is not Node3D: %s" % target_param})
+			return
+	elif target_param is Dictionary:
+		var dict: Dictionary = target_param
+		_moveto_target = Vector3(float(dict.get("x", 0)), float(dict.get("y", 0)), float(dict.get("z", 0)))
+	else:
+		_write_response({"error": "'target' is required (node_path string or {x,y,z} object)"})
+		return
+
+	# Resolve camera pivot
+	_moveto_camera_pivot = null
+	var camera_path: String = params.get("camera_path", "")
+	if not camera_path.is_empty():
+		var cam_node := get_node_or_null(NodePath(camera_path))
+		if cam_node is Node3D:
+			_moveto_camera_pivot = cam_node as Node3D
+	else:
+		# Auto-detect: look for SpringArm3D child of player
+		for child in _moveto_player.get_children():
+			if child is SpringArm3D:
+				_moveto_camera_pivot = child as Node3D
+				break
+		# Fallback: active Camera3D's parent
+		if _moveto_camera_pivot == null:
+			var cam := get_viewport().get_camera_3d()
+			if cam != null and cam.get_parent() is Node3D and cam.get_parent() != get_tree().root:
+				_moveto_camera_pivot = cam.get_parent() as Node3D
+
+	# Read params
+	_moveto_arrival_radius = float(params.get("arrival_radius", 1.5))
+	_moveto_timeout = float(params.get("timeout", 15.0))
+	_moveto_run = bool(params.get("run", false))
+	_moveto_look_at = bool(params.get("look_at_target", true))
+	_moveto_elapsed = 0.0
+	_moveto_keys_held.clear()
+
+	# Check if already at target
+	var dist := _moveto_player.global_position.distance_to(_moveto_target)
+	if dist <= _moveto_arrival_radius:
 		_write_response({
-			"passed": false,
-			"error": "Node not found: %s" % node_path,
-			"node_path": node_path,
-			"property": property,
-			"operator": operator,
+			"success": true,
+			"arrived": true,
+			"final_distance": snappedf(dist, 0.01),
+			"final_position": _serialize_value(_moveto_player.global_position),
+			"target_position": _serialize_value(_moveto_target),
+			"elapsed_time": 0.0,
 		})
 		return
 
-	var actual = node.get(property)
-	var actual_serialized = _serialize_value(actual)
-	var passed := false
+	# Start walking — async state, don't trigger crash recovery
+	_pending_command = false
+	_state = State.MOVING_TO
 
-	match operator:
-		"eq":
-			passed = str(actual) == str(expected) or actual_serialized == expected
-		"neq":
-			passed = str(actual) != str(expected) and actual_serialized != expected
-		"gt":
-			passed = float(actual) > float(expected)
-		"lt":
-			passed = float(actual) < float(expected)
-		"gte":
-			passed = float(actual) >= float(expected)
-		"lte":
-			passed = float(actual) <= float(expected)
-		"contains":
-			passed = str(actual).contains(str(expected))
-		"type_is":
-			passed = node.get_class() == str(expected) or typeof(actual) == int(expected)
-		_:
-			_write_response({"error": "Unknown operator: %s" % operator})
-			return
+	# Inject walk key
+	_inject_key(KEY_W, true)
+	if _moveto_run:
+		_inject_key(KEY_SHIFT, true)
+
+
+func _process_move_to(delta: float) -> void:
+	# Check for abort (new command arrived)
+	if FileAccess.file_exists(REQUEST_PATH):
+		_finish_move_to(false, "Aborted by new command")
+		_state = State.IDLE
+		_handle_request()
+		return
+
+	_moveto_elapsed += delta
+
+	# Timeout check
+	if _moveto_elapsed >= _moveto_timeout:
+		_finish_move_to(false, "Timeout after %.1fs" % _moveto_timeout)
+		return
+
+	# Safety: player freed
+	if not is_instance_valid(_moveto_player):
+		_finish_move_to(false, "Player node was freed")
+		return
+
+	var player_pos := _moveto_player.global_position
+	var flat_target := Vector3(_moveto_target.x, player_pos.y, _moveto_target.z)
+	var dist := player_pos.distance_to(flat_target)
+
+	# Arrival check (XZ distance only, ignore Y)
+	if dist <= _moveto_arrival_radius:
+		_finish_move_to(true, "Arrived")
+		return
+
+	# Rotate camera pivot toward target
+	if _moveto_look_at and _moveto_camera_pivot != null and is_instance_valid(_moveto_camera_pivot):
+		var dir := flat_target - player_pos
+		if dir.length_squared() > 0.01:
+			var target_yaw := atan2(-dir.x, -dir.z)
+			var current_yaw: float = _moveto_camera_pivot.rotation.y
+			# Lerp toward target yaw (~10 rad/s)
+			var yaw_diff := target_yaw - current_yaw
+			# Normalize to [-PI, PI]
+			while yaw_diff > PI:
+				yaw_diff -= TAU
+			while yaw_diff < -PI:
+				yaw_diff += TAU
+			var max_step := 10.0 * delta
+			var step := clampf(yaw_diff, -max_step, max_step)
+			_moveto_camera_pivot.rotation.y += step
+
+
+func _finish_move_to(success: bool, message: String) -> void:
+	# Release all held keys
+	_release_all_keys()
+	_state = State.IDLE
+
+	var final_pos := Vector3.ZERO
+	var final_dist := 0.0
+	if is_instance_valid(_moveto_player):
+		final_pos = _moveto_player.global_position
+		final_dist = final_pos.distance_to(_moveto_target)
 
 	_write_response({
-		"passed": passed,
-		"node_path": node_path,
-		"property": property,
-		"operator": operator,
-		"expected": expected,
-		"actual": actual_serialized,
+		"success": success,
+		"arrived": success,
+		"message": message,
+		"final_distance": snappedf(final_dist, 0.01),
+		"final_position": _serialize_value(final_pos),
+		"target_position": _serialize_value(_moveto_target),
+		"elapsed_time": snappedf(_moveto_elapsed, 0.01),
 	})
+
+
+func _inject_key(keycode: int, pressed: bool) -> void:
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.pressed = pressed
+	Input.parse_input_event(event)
+	if pressed:
+		_moveto_keys_held.append(keycode)
+	else:
+		_moveto_keys_held.erase(keycode)
+
+
+func _release_all_keys() -> void:
+	for keycode: int in _moveto_keys_held.duplicate():
+		var event := InputEventKey.new()
+		event.keycode = keycode
+		event.pressed = false
+		Input.parse_input_event(event)
+	_moveto_keys_held.clear()
 
 
 # ── Recording ────────────────────────────────────────────────────────────────
@@ -917,13 +1303,11 @@ func _cmd_replay_recording(params: Dictionary) -> void:
 
 	var speed: float = params.get("speed", 1.0)
 
-	# Replay events with timing
 	var start_msec := Time.get_ticks_msec()
 	for event_data: Dictionary in events:
 		var delay_ms: int = event_data.get("time_ms", 0)
 		var adjusted_delay := int(delay_ms / speed)
 
-		# Wait until the right time
 		while Time.get_ticks_msec() - start_msec < adjusted_delay:
 			await get_tree().process_frame
 
@@ -973,7 +1357,7 @@ func _input(event: InputEvent) -> void:
 		data["pressed"] = act.pressed
 		data["strength"] = act.strength
 	else:
-		return  # Skip unsupported event types
+		return
 
 	_recording_events.append(data)
 

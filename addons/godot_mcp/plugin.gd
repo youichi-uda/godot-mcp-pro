@@ -41,7 +41,7 @@ func _enter_tree() -> void:
 	_inject_autoloads()
 
 	websocket_server.start_server()
-	print("[MCP] Godot MCP Pro v1.0.0 started (ports 6505-6509)")
+	print("[MCP] Godot MCP Pro v1.4.0 started (ports 6505-6509)")
 
 
 func _exit_tree() -> void:
@@ -86,6 +86,38 @@ func _remove_autoloads() -> void:
 			changed = true
 	if changed:
 		ProjectSettings.save()
+
+
+func _process(_delta: float) -> void:
+	# Check if game inspector requested debugger continue
+	var flag_path := OS.get_user_data_dir() + "/mcp_debugger_continue"
+	if FileAccess.file_exists(flag_path):
+		DirAccess.remove_absolute(flag_path)
+		_try_debugger_continue()
+
+
+func _try_debugger_continue() -> void:
+	# Last resort: find and press the debugger Continue button to unstick the game
+	var base: Node = EditorInterface.get_base_control()
+	var continue_btn := _find_debugger_continue_button(base)
+	if continue_btn and continue_btn.visible and not continue_btn.disabled:
+		continue_btn.emit_signal("pressed")
+		push_warning("[MCP] Auto-pressed debugger Continue button")
+	else:
+		push_warning("[MCP] Could not find debugger Continue button")
+
+
+func _find_debugger_continue_button(node: Node) -> Button:
+	# Search for the Continue button in ScriptEditorDebugger
+	if node is Button:
+		var btn: Button = node
+		if btn.tooltip_text.contains("Continue") or btn.text == "Continue":
+			return btn
+	for child in node.get_children():
+		var found: Button = _find_debugger_continue_button(child)
+		if found:
+			return found
+	return null
 
 
 func _cleanup_temp_files() -> void:

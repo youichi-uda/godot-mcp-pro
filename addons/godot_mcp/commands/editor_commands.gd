@@ -5,6 +5,7 @@ extends "res://addons/godot_mcp/commands/base_command.gd"
 func get_commands() -> Dictionary:
 	return {
 		"get_editor_errors": _get_editor_errors,
+		"get_output_log": _get_output_log,
 		"get_editor_screenshot": _get_editor_screenshot,
 		"get_game_screenshot": _get_game_screenshot,
 		"execute_editor_script": _execute_editor_script,
@@ -67,6 +68,47 @@ func _get_editor_errors(params: Dictionary) -> Dictionary:
 
 	errors.append_array(script_errors)
 	return success({"errors": errors, "count": errors.size()})
+
+
+func _get_output_log(params: Dictionary) -> Dictionary:
+	var max_lines: int = optional_int(params, "max_lines", 100)
+	var filter: String = optional_string(params, "filter", "")
+	var base: Control = get_editor().get_base_control()
+
+	var editor_log: Node = base.find_child("Output", true, false)
+	if editor_log == null:
+		# Fallback: read from log file
+		var log_path := "user://logs/godot.log"
+		if not FileAccess.file_exists(log_path):
+			return error_internal("Output panel not found and no log file available")
+		var file := FileAccess.open(log_path, FileAccess.READ)
+		if file == null:
+			return error_internal("Cannot read log file")
+		var content := file.get_as_text()
+		file.close()
+		var lines := content.split("\n")
+		var start: int = maxi(0, lines.size() - max_lines)
+		var output_lines: Array = []
+		for i in range(start, lines.size()):
+			var line: String = lines[i]
+			if filter.is_empty() or line.contains(filter):
+				output_lines.append(line)
+		return success({"lines": output_lines, "count": output_lines.size(), "source": "log_file"})
+
+	var rtl: RichTextLabel = _find_rtl(editor_log)
+	if rtl == null:
+		return error_internal("Could not find RichTextLabel in Output panel")
+
+	var content: String = rtl.get_parsed_text()
+	var all_lines: PackedStringArray = content.split("\n")
+	var start: int = maxi(0, all_lines.size() - max_lines)
+	var output_lines: Array = []
+	for i in range(start, all_lines.size()):
+		var line: String = all_lines[i]
+		if filter.is_empty() or line.contains(filter):
+			output_lines.append(line)
+
+	return success({"lines": output_lines, "count": output_lines.size(), "source": "output_panel"})
 
 
 func _find_code_edit(node: Node, depth: int = 0) -> CodeEdit:

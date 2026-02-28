@@ -2,6 +2,7 @@
 extends "res://addons/godot_mcp/commands/base_command.gd"
 
 const NodeUtils := preload("res://addons/godot_mcp/utils/node_utils.gd")
+const PropertyParser := preload("res://addons/godot_mcp/utils/property_parser.gd")
 
 
 func get_commands() -> Dictionary:
@@ -15,6 +16,7 @@ func get_commands() -> Dictionary:
 		"play_scene": _play_scene,
 		"stop_scene": _stop_scene,
 		"save_scene": _save_scene,
+		"get_scene_exports": _get_scene_exports,
 	}
 
 
@@ -222,6 +224,63 @@ func _save_scene(params: Dictionary) -> Dictionary:
 		return error_internal("Failed to save scene: %s" % error_string(err))
 
 	return success({"path": path, "saved": true})
+
+
+func _get_scene_exports(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "path")
+	if result[1] != null:
+		return result[1]
+	var path: String = result[0]
+
+	if not FileAccess.file_exists(path):
+		return error_not_found("Scene file '%s'" % path)
+
+	var packed: PackedScene = load(path)
+	if packed == null:
+		return error_internal("Failed to load scene: %s" % path)
+
+	var instance: Node = packed.instantiate()
+	if instance == null:
+		return error_internal("Failed to instantiate scene: %s" % path)
+
+	var nodes_data: Array = []
+	_collect_exports_recursive(instance, instance, nodes_data)
+
+	instance.queue_free()
+
+	return success({
+		"path": path,
+		"nodes": nodes_data,
+		"count": nodes_data.size(),
+	})
+
+
+func _collect_exports_recursive(node: Node, root: Node, nodes_data: Array) -> void:
+	var script: Script = node.get_script()
+	if script != null:
+		var exports: Dictionary = {}
+		for prop_info in script.get_script_property_list():
+			var usage: int = prop_info["usage"]
+			if (usage & PROPERTY_USAGE_EDITOR) and (usage & PROPERTY_USAGE_SCRIPT_VARIABLE):
+				var prop_name: String = prop_info["name"]
+				exports[prop_name] = {
+					"value": PropertyParser.serialize_value(node.get(prop_name)),
+					"type": prop_info["type"],
+					"hint": prop_info.get("hint", 0),
+					"hint_string": prop_info.get("hint_string", ""),
+				}
+		if not exports.is_empty():
+			var node_path := "." if node == root else str(root.get_path_to(node))
+			nodes_data.append({
+				"node_path": node_path,
+				"node_name": node.name,
+				"node_type": node.get_class(),
+				"script_path": script.resource_path,
+				"exports": exports,
+			})
+
+	for child in node.get_children():
+		_collect_exports_recursive(child, root, nodes_data)
 
 
 func _cleanup_screenshot_files() -> void:

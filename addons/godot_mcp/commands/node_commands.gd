@@ -18,6 +18,9 @@ func get_commands() -> Dictionary:
 		"rename_node": _rename_node,
 		"connect_signal": _connect_signal,
 		"disconnect_signal": _disconnect_signal,
+		"get_node_groups": _get_node_groups,
+		"set_node_groups": _set_node_groups,
+		"find_nodes_in_group": _find_nodes_in_group,
 	}
 
 
@@ -538,3 +541,111 @@ func _disconnect_signal(params: Dictionary) -> Dictionary:
 		"method": method_name,
 		"disconnected": true,
 	})
+
+
+func _get_node_groups(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "node_path")
+	if result[1] != null:
+		return result[1]
+	var node_path: String = result[0]
+
+	var root := get_edited_root()
+	if root == null:
+		return error_no_scene()
+
+	var node := find_node_by_path(node_path)
+	if node == null:
+		return error_not_found("Node '%s'" % node_path, "Use get_scene_tree to see available nodes")
+
+	var groups: Array = []
+	for group: StringName in node.get_groups():
+		var g := str(group)
+		# Filter out internal groups (start with _)
+		if not g.begins_with("_"):
+			groups.append(g)
+
+	return success({
+		"node_path": str(root.get_path_to(node)),
+		"groups": groups,
+		"count": groups.size(),
+	})
+
+
+func _set_node_groups(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "node_path")
+	if result[1] != null:
+		return result[1]
+	var node_path: String = result[0]
+
+	if not params.has("groups") or not params["groups"] is Array:
+		return error_invalid_params("'groups' array is required")
+	var desired_groups: Array = params["groups"]
+
+	var root := get_edited_root()
+	if root == null:
+		return error_no_scene()
+
+	var node := find_node_by_path(node_path)
+	if node == null:
+		return error_not_found("Node '%s'" % node_path, "Use get_scene_tree to see available nodes")
+
+	# Get current non-internal groups
+	var current_groups: Array = []
+	for group: StringName in node.get_groups():
+		var g := str(group)
+		if not g.begins_with("_"):
+			current_groups.append(g)
+
+	var added: Array = []
+	var removed: Array = []
+
+	# Remove groups not in desired
+	for group: String in current_groups:
+		if group not in desired_groups:
+			node.remove_from_group(group)
+			removed.append(group)
+
+	# Add groups not in current
+	for group in desired_groups:
+		var g: String = str(group)
+		if g not in current_groups:
+			node.add_to_group(g, true)
+			added.append(g)
+
+	return success({
+		"node_path": str(root.get_path_to(node)),
+		"groups": desired_groups,
+		"added": added,
+		"removed": removed,
+	})
+
+
+func _find_nodes_in_group(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "group")
+	if result[1] != null:
+		return result[1]
+	var group_name: String = result[0]
+
+	var root := get_edited_root()
+	if root == null:
+		return error_no_scene()
+
+	var matches: Array = []
+	_find_in_group_recursive(root, root, group_name, matches)
+
+	return success({
+		"group": group_name,
+		"nodes": matches,
+		"count": matches.size(),
+	})
+
+
+func _find_in_group_recursive(node: Node, root: Node, group_name: String, matches: Array) -> void:
+	if node.is_in_group(group_name):
+		matches.append({
+			"name": node.name,
+			"path": str(root.get_path_to(node)),
+			"type": node.get_class(),
+		})
+	for child in node.get_children():
+		_find_in_group_recursive(child, root, group_name, matches)

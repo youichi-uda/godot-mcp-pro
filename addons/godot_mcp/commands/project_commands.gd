@@ -7,10 +7,13 @@ func get_commands() -> Dictionary:
 		"get_project_info": _get_project_info,
 		"get_filesystem_tree": _get_filesystem_tree,
 		"search_files": _search_files,
+		"search_in_files": _search_in_files,
 		"get_project_settings": _get_project_settings,
 		"set_project_setting": _set_project_setting,
 		"uid_to_project_path": _uid_to_project_path,
 		"project_path_to_uid": _project_path_to_uid,
+		"add_autoload": _add_autoload,
+		"remove_autoload": _remove_autoload,
 	}
 
 
@@ -242,3 +245,146 @@ func _project_path_to_uid(params: Dictionary) -> Dictionary:
 
 	var uid_str := ResourceUID.id_to_text(uid)
 	return success({"path": path, "uid": uid_str})
+
+
+const _TEXT_EXTENSIONS: PackedStringArray = ["gd", "tscn", "tres", "cfg", "godot", "gdshader", "md", "txt", "json"]
+
+func _search_in_files(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "query")
+	if result[1] != null:
+		return result[1]
+	var query: String = result[0]
+
+	var path: String = optional_string(params, "path", "res://")
+	var max_results: int = optional_int(params, "max_results", 50)
+	var use_regex: bool = optional_bool(params, "regex", false)
+	var file_type: String = optional_string(params, "file_type", "")
+
+	var regex: RegEx = null
+	if use_regex:
+		regex = RegEx.new()
+		var err := regex.compile(query)
+		if err != OK:
+			return error_invalid_params("Invalid regex pattern: %s" % error_string(err))
+
+	var matches: Array = []
+	_search_in_files_recursive(path, query, regex, file_type, matches, max_results)
+
+	return success({"matches": matches, "count": matches.size(), "query": query})
+
+
+func _search_in_files_recursive(path: String, query: String, regex: RegEx, file_type: String, matches: Array, max_results: int) -> void:
+	if matches.size() >= max_results:
+		return
+
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return
+
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+
+	while not file_name.is_empty() and matches.size() < max_results:
+		if file_name.begins_with("."):
+			file_name = dir.get_next()
+			continue
+
+		var full_path := path.path_join(file_name)
+
+		if dir.current_is_dir():
+			# Skip addons and .godot directories
+			if file_name != "addons" and file_name != ".godot":
+				_search_in_files_recursive(full_path, query, regex, file_type, matches, max_results)
+		else:
+			var ext := file_name.get_extension()
+			# Filter by file type if specified, otherwise use text extensions
+			if not file_type.is_empty():
+				if ext != file_type:
+					file_name = dir.get_next()
+					continue
+			elif ext not in _TEXT_EXTENSIONS:
+				file_name = dir.get_next()
+				continue
+
+			var file := FileAccess.open(full_path, FileAccess.READ)
+			if file:
+				var content := file.get_as_text()
+				file.close()
+				var lines := content.split("\n")
+				for i in range(lines.size()):
+					if matches.size() >= max_results:
+						break
+					var line: String = lines[i]
+					var matched := false
+					if regex != null:
+						matched = regex.search(line) != null
+					else:
+						matched = line.contains(query)
+					if matched:
+						matches.append({
+							"file": full_path,
+							"line": i + 1,
+							"text": line.strip_edges(),
+						})
+
+		file_name = dir.get_next()
+
+	dir.list_dir_end()
+
+
+func _add_autoload(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "name")
+	if result[1] != null:
+		return result[1]
+	var autoload_name: String = result[0]
+
+	var result2 := require_string(params, "path")
+	if result2[1] != null:
+		return result2[1]
+	var autoload_path: String = result2[0]
+
+	if not FileAccess.file_exists(autoload_path):
+		return error_not_found("File '%s'" % autoload_path)
+
+	# Check if already exists
+	var setting_key := "autoload/" + autoload_name
+	if ProjectSettings.has_setting(setting_key):
+		return error(-32000, "Autoload '%s' already exists" % autoload_name, {
+			"current_value": str(ProjectSettings.get_setting(setting_key)),
+			"suggestion": "Use remove_autoload first to replace it",
+		})
+
+	# Autoload format: "*res://path.gd" (the * prefix means it's a singleton)
+	ProjectSettings.set_setting(setting_key, "*" + autoload_path)
+	var err := ProjectSettings.save()
+	if err != OK:
+		return error_internal("Failed to save project settings: %s" % error_string(err))
+
+	return success({
+		"name": autoload_name,
+		"path": autoload_path,
+		"added": true,
+	})
+
+
+func _remove_autoload(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "name")
+	if result[1] != null:
+		return result[1]
+	var autoload_name: String = result[0]
+
+	var setting_key := "autoload/" + autoload_name
+	if not ProjectSettings.has_setting(setting_key):
+		return error_not_found("Autoload '%s'" % autoload_name)
+
+	var old_value: String = str(ProjectSettings.get_setting(setting_key))
+	ProjectSettings.clear(setting_key)
+	var err := ProjectSettings.save()
+	if err != OK:
+		return error_internal("Failed to save project settings: %s" % error_string(err))
+
+	return success({
+		"name": autoload_name,
+		"old_path": old_value,
+		"removed": true,
+	})
