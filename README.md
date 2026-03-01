@@ -10,7 +10,7 @@
 
 > One prompt → AI creates the scene, writes GDScript, launches the game, and play-tests it with mouse clicks.
 
-https://github.com/youichi-uda/godot-mcp-pro/releases/download/v1.4.0/demo_clip_v2.mp4
+https://github.com/user-attachments/assets/30dc19c6-e4d6-43e8-9961-ed902f5951d9
 
 [Watch the full 5-minute demo on YouTube](https://youtu.be/D-jqmczINnQ)
 
