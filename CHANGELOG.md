@@ -2,6 +2,30 @@
 
 All notable changes to Godot MCP Pro will be documented in this file.
 
+## [1.4.0] - 2026-03-01
+
+### Added
+- **`move_to`** — Autopilot: automatically walk a character to target coordinates using pathfinding
+- **`navigate_to`** — High-level navigation command for AI-driven movement
+- **`find_nearby_nodes`** — Find nodes within a radius of a given position
+- **`get_node_groups`** / **`set_node_groups`** — Read and write node group memberships
+- **`find_nodes_in_group`** — Query all nodes belonging to a specific group
+- **`get_output_log`** — Retrieve Godot's Output panel contents
+- **`get_input_actions`** / **`set_input_action`** — Read and configure Input Map actions
+- **`search_in_files`** — Full-text search across project files
+- **`validate_script`** — Check GDScript for errors without running
+- **`get_resource_preview`** — Get thumbnail previews of resources
+- **`get_scene_exports`** — List exported variables in a scene's root script
+- **`add_autoload`** / **`remove_autoload`** — Manage autoload singletons
+- Total tools: 147 → 162
+
+### Fixed
+- **Crash recovery**: `capture_frames` no longer triggers false crash recovery (`_pending_command` flag fix)
+- **`capture_frames` node_data**: Optional per-frame property snapshots via `node_data` parameter
+- **Debugger auto-continue**: Automatically presses Continue when runtime errors pause the debugger
+- **`simulate_key` duration**: Now accepts fractional seconds (e.g., 0.3s) for precise movement control
+- **Command router**: All 8 command classes now properly registered (~47 tools were previously unreachable)
+
 ## [1.3.1] - 2026-02-27
 
 ### Fixed
