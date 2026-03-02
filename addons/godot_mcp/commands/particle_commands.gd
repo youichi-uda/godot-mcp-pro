@@ -487,13 +487,16 @@ func _apply_particle_preset(params: Dictionary) -> Dictionary:
 
 func _apply_gradient(mat: ParticleProcessMaterial, stops: Array) -> void:
 	var gradient := Gradient.new()
-	while gradient.get_point_count() > 0:
-		gradient.remove_point(0)
+	# Remove default points before adding custom stops
+	for i in range(gradient.get_point_count() - 1, -1, -1):
+		gradient.remove_point(i)
 	for stop in stops:
 		gradient.add_point(stop["offset"], stop["color"])
 	var grad_tex := GradientTexture1D.new()
+	grad_tex.width = 64  # Smaller texture to avoid GPU issues in compatibility mode
 	grad_tex.gradient = gradient
-	mat.color_ramp = grad_tex
+	# Defer color_ramp assignment to avoid editor crash during rendering
+	mat.set_deferred("color_ramp", grad_tex)
 
 
 func _get_particle_info(params: Dictionary) -> Dictionary:

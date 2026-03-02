@@ -847,6 +847,7 @@ func _find_button_by_text(node: Node, text: String, partial: bool) -> Button:
 # ── wait_for_node ────────────────────────────────────────────────────────────
 
 func _cmd_wait_for_node(params: Dictionary) -> void:
+	_pending_command = false  # Async command — don't trigger crash recovery
 	var node_path: String = params.get("node_path", "")
 	if node_path.is_empty():
 		_write_response({"error": "'node_path' is required"})
@@ -1296,6 +1297,7 @@ func _cmd_stop_recording(_params: Dictionary) -> void:
 
 
 func _cmd_replay_recording(params: Dictionary) -> void:
+	_pending_command = false  # Async command — don't trigger crash recovery
 	var events: Array = params.get("events", [])
 	if events.is_empty():
 		_write_response({"error": "No events to replay"})

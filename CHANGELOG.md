@@ -2,9 +2,24 @@
 
 All notable changes to Godot MCP Pro will be documented in this file.
 
-## [1.4.0] - 2026-03-01
+---
 
-### Added
+## v1.4.1 — 2026-03-02
+
+**Patch release** — Bug fixes found during comprehensive tool audit
+
+### Bug Fixes
+- **`replay_recording`**: Fixed false crash recovery error (`_pending_command` flag not cleared for async replay loop)
+- **`wait_for_node`**: Fixed false crash recovery error when polling for node appearance
+- **`apply_particle_preset`**: Fixed editor crash in `gl_compatibility` renderer caused by immediate `GradientTexture1D` assignment — now uses `set_deferred` and reduced texture width
+
+---
+
+## v1.4.0 — 2026-03-01
+
+**162 tools** across 23 categories (+15 new tools)
+
+### New Tools
 - **`move_to`** — Autopilot: automatically walk a character to target coordinates using pathfinding
 - **`navigate_to`** — High-level navigation command for AI-driven movement
 - **`find_nearby_nodes`** — Find nodes within a radius of a given position
@@ -17,70 +32,147 @@ All notable changes to Godot MCP Pro will be documented in this file.
 - **`get_resource_preview`** — Get thumbnail previews of resources
 - **`get_scene_exports`** — List exported variables in a scene's root script
 - **`add_autoload`** / **`remove_autoload`** — Manage autoload singletons
-- Total tools: 147 → 162
 
-### Fixed
+### Bug Fixes & Improvements
 - **Crash recovery**: `capture_frames` no longer triggers false crash recovery (`_pending_command` flag fix)
 - **`capture_frames` node_data**: Optional per-frame property snapshots via `node_data` parameter
 - **Debugger auto-continue**: Automatically presses Continue when runtime errors pause the debugger
-- **`simulate_key` duration**: Now accepts fractional seconds (e.g., 0.3s) for precise movement control
-- **Command router**: All 8 command classes now properly registered (~47 tools were previously unreachable)
+- **`simulate_key` duration**: Now accepts fractional seconds (e.g., 0.3s) for precise movement
+- **Command router fix**: All 8 command classes now properly registered (~47 tools were previously unreachable)
 
-## [1.3.1] - 2026-02-27
+---
 
-### Fixed
-- `get_editor_errors` now reads from the editor's Output panel (RichTextLabel) and script editor compile errors (CodeEdit red background lines) instead of relying on `godot.log`, which is empty in Godot 4.6
-- `scene_3d_commands` tonemap enum names updated for Godot 4.6 (`TONE_MAP_*` → `TONE_MAPPER_*`)
-- Added AGX tonemap mode support
+## v1.3.1 — 2026-02-27
 
-## [1.3.0] - 2026-02-25
+**Patch release**
 
-### Added
-- **AnimationTree** (8 tools): State machines, transitions with conditions, blend trees, tree parameters
-- **3D Scene** (6 tools): Mesh primitives & .glb/.gltf import, lighting presets, PBR materials, environment (sky/fog/SSAO/SSR), cameras, GridMap
-- **Physics** (6 tools): Collision shapes (auto 2D/3D), physics layers/masks, raycasts, body configuration
-- **Particles** (5 tools): GPU particles 2D/3D, material config, color gradients, presets (fire/smoke/rain/snow/sparks)
-- **Navigation** (5 tools): Navigation regions, mesh baking, pathfinding agents, layer management
-- **Audio** (6 tools): Audio bus layout, effects (reverb/delay/compressor/EQ), 2D/3D players
-- **Resource** (3 tools): Read/edit/create .tres resource files of any type
-- **Testing & QA** (5 tools): Automated test scenarios, property assertions, screen text verification, stress testing
-- **Code Analysis** (6 tools): Unused resource detection, signal flow mapping, scene complexity, circular dependencies
-- Runtime tools: `find_ui_elements`, `click_button_by_text`, `wait_for_node`, `batch_get_properties`
-- Editor tools: `compare_screenshots` (visual diff), `set_project_setting`
-- Batch tools: `cross_scene_set_property`
-- Total tools: 84 → 147 across 14 → 23 categories
+### Bug Fixes
+- **`get_editor_errors`**: Now reads from Output panel and CodeEdit error gutter (previously returned empty results)
+- **Tonemap enum**: Fixed environment tonemap mode enum name mapping
 
-## [1.2.0] - 2026-02-20
+---
 
-### Added
-- **Input Simulation** (5 tools): Keyboard, mouse, InputAction, multi-event sequences
-- **Runtime Analysis** (11 tools): Game scene tree, runtime properties, frame capture, input recording/replay
-- **Animation** (6 tools): Create animations, add tracks, insert keyframes
-- **TileMap** (6 tools): Set/fill/query cells, tile set info
-- **Theme & UI** (6 tools): Colors, constants, font sizes, StyleBoxFlat
-- **Shader** (6 tools): Create/edit shaders, assign materials, set/get uniforms
-- **Batch & Refactoring** (5 tools): Find by type, signal audit, batch property set
-- **Profiling** (2 tools): Performance monitors
-- **Export** (3 tools): Export presets and commands
-- Total tools: 32 → 84 across 5 → 14 categories
+## v1.3.0 — 2026-02-26
 
-## [1.1.0] - 2026-02-15
+**147 tools** across 23 categories (+63 new tools)
 
-### Added
-- Signal management: `connect_signal`, `disconnect_signal`, `get_signals`
-- Node operations: `rename_node`, `duplicate_node`, `move_node`, `set_anchor_preset`
-- Smart type parsing for Vector2, Vector3, Color, Rect2, etc.
-- Full Undo/Redo support via EditorUndoRedoManager
-- Port auto-scanning (6505-6509)
-- Heartbeat with auto-reconnect
+### New Tool Categories
 
-## [1.0.0] - 2026-02-10
+#### AnimationTree & State Machine (8 tools)
+- `create_animation_tree`, `get_animation_tree_structure`, `set_tree_parameter`
+- `add_state_machine_state`, `remove_state_machine_state`
+- `add_state_machine_transition`, `remove_state_machine_transition`
+- `set_blend_tree_node`
 
-### Added
-- Initial release
-- **Project** (5 tools): Project info, filesystem tree, file search
-- **Scene** (7 tools): Scene tree, create/open/delete/save, play/stop
-- **Node** (4 tools): Add/delete nodes, update properties, get properties
-- **Script** (5 tools): List/read/create/edit scripts, attach to nodes
-- **Editor** (5 tools): Screenshots, GDScript execution, error log
-- WebSocket connection with exponential backoff reconnect
+#### Physics & Collision (6 tools)
+- `setup_collision`, `setup_physics_body`, `get_collision_info`
+- `get_physics_layers`, `set_physics_layers`, `add_raycast`
+
+#### 3D Scene (6 tools)
+- `add_mesh_instance`, `setup_lighting`, `set_material_3d`
+- `setup_environment`, `setup_camera_3d`, `add_gridmap`
+
+#### Particles (5 tools)
+- `create_particles`, `set_particle_material`, `set_particle_color_gradient`
+- `get_particle_info`, `apply_particle_preset` (8 built-in presets: fire, smoke, sparks, rain, snow, explosion, magic, dust)
+
+#### Navigation (5 tools)
+- `setup_navigation_region`, `bake_navigation_mesh`, `setup_navigation_agent`
+- `set_navigation_layers`, `get_navigation_info`
+
+#### Audio (6 tools)
+- `get_audio_bus_layout`, `add_audio_bus`, `set_audio_bus`
+- `add_audio_bus_effect`, `add_audio_player`, `get_audio_info`
+
+#### Testing & QA (5 tools)
+- `run_test_scenario`, `assert_node_state`, `assert_screen_text`
+- `run_stress_test`, `get_test_report`
+
+#### Project Analysis (6 tools)
+- `find_unused_resources`, `analyze_signal_flow`, `analyze_scene_complexity`
+- `detect_circular_dependencies`, `get_scene_dependencies`, `get_project_statistics`
+
+### Expanded: Runtime Analysis
+- `find_ui_elements`, `click_button_by_text`, `wait_for_node`
+- Runtime tools expanded from 4 to 15 tools
+
+### Other Additions
+- `add_resource`, `create_resource`, `edit_resource`, `read_resource` — Resource management tools
+
+---
+
+## v1.2.0 — 2026-02-24
+
+**84 tools** across 14 categories (+34 new tools)
+
+### New Tool Categories
+
+#### Animation (6 tools)
+- `list_animations`, `create_animation`, `add_animation_track`
+- `set_animation_keyframe`, `get_animation_info`, `remove_animation`
+
+#### TileMap (6 tools)
+- `tilemap_set_cell`, `tilemap_fill_rect`, `tilemap_get_cell`
+- `tilemap_clear`, `tilemap_get_info`, `tilemap_get_used_cells`
+
+#### Theme & UI (6 tools)
+- `create_theme`, `set_theme_color`, `set_theme_constant`
+- `set_theme_font_size`, `set_theme_stylebox`, `get_theme_info`
+
+#### Profiling (2 tools)
+- `get_performance_monitors`, `get_editor_performance`
+
+#### Batch Operations & Refactoring (5 tools)
+- `find_nodes_by_type`, `find_signal_connections`, `batch_set_property`
+- `find_node_references`, `get_scene_dependencies`
+
+#### Shader (6 tools)
+- `create_shader`, `read_shader`, `edit_shader`
+- `assign_shader_material`, `set_shader_param`, `get_shader_params`
+
+#### Export (3 tools)
+- `list_export_presets`, `export_project`, `get_export_info`
+
+### Bug Fixes
+- Fixed game IPC connection when project name changes
+- Added `set_project_setting` tool for safe project.godot modifications via EditorSettings API
+- Fixed script reload behavior
+
+---
+
+## v1.1.0 — 2026-02-23
+
+**49 tools** across 8 categories (+16 new tools)
+
+### New Tool Categories
+
+#### Input Simulation (4 tools)
+- `simulate_key`, `simulate_mouse_click`, `simulate_mouse_move`, `simulate_sequence`
+
+#### Runtime Analysis (4 tools)
+- `play_scene`, `stop_scene`, `get_game_scene_tree`, `get_game_screenshot`
+- `execute_game_script`, `get_game_node_properties`, `set_game_node_property`
+- `monitor_properties`, `capture_frames`
+
+### Other
+- Added `build-release.sh` for reproducible release packaging
+- `start_recording` / `stop_recording` / `replay_recording` for input recording
+
+---
+
+## v1.0.0 — 2026-02-22
+
+**~33 tools** across 6 categories — Initial release
+
+### Tool Categories
+- **Scene Management**: `create_scene`, `open_scene`, `save_scene`, `get_scene_tree`, `delete_scene`, `get_scene_file_content`, `add_scene_instance`
+- **Node Operations**: `add_node`, `delete_node`, `rename_node`, `move_node`, `duplicate_node`, `update_property`, `get_node_properties`, `batch_get_properties`, `connect_signal`, `disconnect_signal`, `get_signals`
+- **Script**: `create_script`, `read_script`, `edit_script`, `attach_script`, `list_scripts`, `find_nodes_by_script`, `find_script_references`, `get_open_scripts`
+- **Editor**: `get_editor_screenshot`, `get_editor_errors`, `clear_output`, `execute_editor_script`, `reload_plugin`
+- **Project**: `get_project_info`, `get_project_settings`, `get_filesystem_tree`, `search_files`
+- **UI**: Anchor presets (`set_anchor_preset`)
+
+### Architecture
+- WebSocket-based communication between Godot editor plugin and MCP TypeScript server
+- Supports Claude Code, Cursor, Windsurf, and any MCP-compatible AI coding tool
+- Screenshot capture from both editor and game viewports
