@@ -4,6 +4,15 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.4.5 — 2026-03-04
+
+**Patch release** — Godot 4.3 compatibility fix
+
+### Bug Fixes
+- **Godot 4.3 compatibility**: Fixed `scene_3d_commands.gd` parse error caused by `Environment.TONE_MAPPER_AGX` enum (added in Godot 4.4). Now uses integer value for backward compatibility. This was a blocking error that prevented the entire plugin from loading on Godot 4.3.
+
+---
+
 ## v1.4.4 — 2026-03-04
 
 **Patch release** — Revert Output panel filter expansion

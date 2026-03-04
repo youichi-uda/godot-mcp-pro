@@ -455,7 +455,7 @@ func _setup_environment(params: Dictionary) -> Dictionary:
 			"ACES", "3":
 				env.tonemap_mode = Environment.TONE_MAPPER_ACES
 			"AGX", "4":
-				env.tonemap_mode = Environment.TONE_MAPPER_AGX
+				env.tonemap_mode = 4  # Environment.TONE_MAPPER_AGX (Godot 4.4+)
 	if params.has("tonemap_exposure"):
 		env.tonemap_exposure = _optional_float(params, "tonemap_exposure", 1.0)
 	if params.has("tonemap_white"):
