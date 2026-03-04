@@ -33,7 +33,7 @@ func _get_editor_errors(params: Dictionary) -> Dictionary:
 			var start: int = maxi(0, lines.size() - max_lines)
 			for i in range(start, lines.size()):
 				var line: String = lines[i]
-				if line.contains("ERROR") or line.contains("SCRIPT ERROR") or line.contains("Parse Error") or line.contains("WARNING"):
+				if line.contains("ERROR") or line.contains("SCRIPT ERROR") or line.contains("Parse Error") or line.contains("WARNING") or line.contains("W ") or line.contains("WARN") or line.begins_with("GDScript"):
 					errors.append(line.strip_edges())
 
 	# 2. Check the script editor for compile errors (red background lines)
@@ -94,8 +94,57 @@ func _get_editor_errors(params: Dictionary) -> Dictionary:
 						var prefix: String = "SCRIPT ERROR: %s:" % script_path if not script_path.is_empty() else "SCRIPT ERROR: "
 						analyzer_errors.append(prefix + stripped)
 
+	# 4. Read from the debugger Errors tab (runtime errors/warnings)
+	#    Path: ScriptEditorDebugger > TabContainer > "Errors" VBoxContainer > Tree
+	var debugger_errors: Array = []
+	var base2: Control = get_editor().get_base_control()
+	if base2:
+		var queue: Array[Node] = [base2]
+		while not queue.is_empty():
+			var node := queue.pop_front()
+			if node.get_class() == "ScriptEditorDebugger":
+				# Find TabContainer inside the debugger
+				for child in node.get_children():
+					if child is TabContainer:
+						var tab_container := child as TabContainer
+						for tab_idx in range(tab_container.get_tab_count()):
+							var tab_control: Control = tab_container.get_tab_control(tab_idx)
+							if tab_control is VBoxContainer and tab_control.name.begins_with("Errors"):
+								# Find Tree inside the Errors tab
+								for vchild in tab_control.get_children():
+									if vchild is Tree:
+										var tree := vchild as Tree
+										var root_item: TreeItem = tree.get_root()
+										if root_item:
+											var item: TreeItem = root_item.get_first_child()
+											while item:
+												var col0: String = item.get_text(0).strip_edges()
+												var col1: String = item.get_text(1).strip_edges()
+												if not col0.is_empty() or not col1.is_empty():
+													var msg: String = col0
+													if not col1.is_empty():
+														msg += " " + col1 if not msg.is_empty() else col1
+													debugger_errors.append("DEBUGGER: " + msg)
+												# Also check child items (expanded error details)
+												var sub: TreeItem = item.get_first_child()
+												while sub:
+													var sub0: String = sub.get_text(0).strip_edges()
+													var sub1: String = sub.get_text(1).strip_edges()
+													if not sub0.is_empty() or not sub1.is_empty():
+														var sub_msg: String = sub0
+														if not sub1.is_empty():
+															sub_msg += " " + sub1 if not sub_msg.is_empty() else sub1
+														debugger_errors.append("DEBUGGER:   " + sub_msg)
+													sub = sub.get_next()
+												item = item.get_next()
+								break  # Found Errors tab, stop searching tabs
+						break  # Found TabContainer, stop searching debugger children
+				break  # Found ScriptEditorDebugger, stop BFS
+			for child in node.get_children():
+				queue.append(child)
+
 	# Fallback: read from log file if Output panel not accessible
-	if errors.size() == 0 and script_errors.size() == 0 and analyzer_errors.size() == 0:
+	if errors.size() == 0 and script_errors.size() == 0 and analyzer_errors.size() == 0 and debugger_errors.size() == 0:
 		var log_path := "user://logs/godot.log"
 		if FileAccess.file_exists(log_path):
 			var file := FileAccess.open(log_path, FileAccess.READ)
@@ -111,6 +160,7 @@ func _get_editor_errors(params: Dictionary) -> Dictionary:
 
 	errors.append_array(script_errors)
 	errors.append_array(analyzer_errors)
+	errors.append_array(debugger_errors)
 	return success({"errors": errors, "count": errors.size()})
 
 

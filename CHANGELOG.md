@@ -4,6 +4,19 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.4.3 — 2026-03-04
+
+**Patch release** — Comprehensive error/warning detection
+
+### Improvements
+- **`get_editor_errors`**: Now reads runtime errors from the debugger Errors tab (ScriptEditorDebugger), returned with `DEBUGGER:` prefix including stack traces. Previously only static analysis and Output panel errors were captured.
+- **`get_editor_errors`**: Expanded Output panel filter to catch additional warning patterns (`W `, `WARN`, `GDScript` prefix) for better coverage of GDScript-related warnings like "Integer division" and "has the same name as".
+
+### Bug Fixes
+- **`get_editor_errors`**: Fixed debugger Errors tab not being found because the tab name includes a count suffix (e.g. "Errors (1)") — now uses prefix matching.
+
+---
+
 ## v1.4.2 — 2026-03-04
 
 **Patch release** — Improved error detection in script editor
