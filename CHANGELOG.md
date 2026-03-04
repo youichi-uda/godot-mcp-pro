@@ -4,6 +4,15 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.4.2 — 2026-03-04
+
+**Patch release** — Improved error detection in script editor
+
+### Improvements
+- **`get_editor_errors`**: Now reads GDScript analyzer errors and warnings from the script editor's error/warning panels (VSplitContainer RichTextLabels), in addition to the Output panel and CodeEdit line highlights. Catches static analysis messages like type mismatches and autoload name conflicts that were previously missed.
+
+---
+
 ## v1.4.1 — 2026-03-02
 
 **Patch release** — Bug fixes found during comprehensive tool audit

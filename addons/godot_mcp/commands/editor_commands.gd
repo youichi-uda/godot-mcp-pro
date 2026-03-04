@@ -51,8 +51,51 @@ func _get_editor_errors(params: Dictionary) -> Dictionary:
 					var line_text: String = ce.get_line(i).strip_edges()
 					script_errors.append("COMPILE ERROR: %s:%d - %s" % [script_path, i + 1, line_text])
 
+	# 3. Read from script editor error/warning panels (GDScript analyzer messages)
+	#    Each open script editor has a VSplitContainer with two RichTextLabels:
+	#    child[1] = warnings panel, child[2] = errors panel
+	var analyzer_errors: Array = []
+	if script_editor:
+		var open_editors: Array = script_editor.get_open_script_editors()
+		var open_scripts: Array = script_editor.get_open_scripts()
+		for ei in range(open_editors.size()):
+			var editor_node: Node = open_editors[ei]
+			var script_path: String = ""
+			if ei < open_scripts.size() and open_scripts[ei] != null:
+				script_path = (open_scripts[ei] as Resource).resource_path
+			var vsplit: VSplitContainer = null
+			for c in editor_node.get_children():
+				if c is VSplitContainer:
+					vsplit = c as VSplitContainer
+					break
+			if vsplit == null:
+				continue
+			var children: Array = vsplit.get_children()
+			# child[1] = warnings panel (RichTextLabel)
+			if children.size() > 1 and children[1] is RichTextLabel:
+				var text: String = (children[1] as RichTextLabel).get_parsed_text().strip_edges()
+				if not text.is_empty():
+					for line in text.split("\n"):
+						var stripped: String = line.strip_edges()
+						if stripped.is_empty() or stripped == "[Ignore]":
+							continue
+						# Remove leading "[Ignore]" prefix from warning lines
+						stripped = stripped.trim_prefix("[Ignore]")
+						var prefix: String = "WARNING: %s:" % script_path if not script_path.is_empty() else "WARNING: "
+						analyzer_errors.append(prefix + stripped)
+			# child[2] = errors panel (RichTextLabel)
+			if children.size() > 2 and children[2] is RichTextLabel:
+				var text: String = (children[2] as RichTextLabel).get_parsed_text().strip_edges()
+				if not text.is_empty():
+					for line in text.split("\n"):
+						var stripped: String = line.strip_edges()
+						if stripped.is_empty():
+							continue
+						var prefix: String = "SCRIPT ERROR: %s:" % script_path if not script_path.is_empty() else "SCRIPT ERROR: "
+						analyzer_errors.append(prefix + stripped)
+
 	# Fallback: read from log file if Output panel not accessible
-	if errors.size() == 0 and script_errors.size() == 0:
+	if errors.size() == 0 and script_errors.size() == 0 and analyzer_errors.size() == 0:
 		var log_path := "user://logs/godot.log"
 		if FileAccess.file_exists(log_path):
 			var file := FileAccess.open(log_path, FileAccess.READ)
@@ -67,6 +110,7 @@ func _get_editor_errors(params: Dictionary) -> Dictionary:
 						errors.append(line.strip_edges())
 
 	errors.append_array(script_errors)
+	errors.append_array(analyzer_errors)
 	return success({"errors": errors, "count": errors.size()})
 
 
