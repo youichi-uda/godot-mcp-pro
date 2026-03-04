@@ -46,7 +46,24 @@ Add to your `.mcp.json`:
 }
 ```
 
-### 4. Use It
+### 4. Lite Mode (Optional)
+
+If your MCP client has a tool count limit (e.g., Windsurf: 100, Cursor: ~40), use Lite mode which registers 76 core tools instead of 162:
+
+```json
+{
+  "mcpServers": {
+    "godot-mcp-pro": {
+      "command": "node",
+      "args": ["D:/dev/godot-mcp-pro/server/build/index.js", "--lite"]
+    }
+  }
+}
+```
+
+Lite mode includes: project, scene, node, script, editor, input, runtime, and input_map tools.
+
+### 5. Use It
 
 Open your Godot project with the plugin enabled, then use Claude Code to interact with the editor.
 

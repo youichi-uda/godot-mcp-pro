@@ -4,6 +4,18 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.5.0 — 2026-03-04
+
+**Feature** — Lite mode for MCP clients with tool count limits
+
+### New Features
+- **Lite mode (`--lite`)**: Launch with `--lite` flag to register only 76 core tools instead of 162. Designed for MCP clients with tool count limits (Windsurf: 100, Cursor: ~40, Antigravity: 100).
+  - Core categories (always loaded): project, scene, node, script, editor, input, runtime, input_map
+  - Extended categories (Full mode only): animation, animation_tree, audio, batch, export, navigation, particle, physics, profiling, resource, scene_3d, shader, test, theme, tilemap, analysis
+  - Usage: Add `"--lite"` to args in your MCP config
+
+---
+
 ## v1.4.5 — 2026-03-04
 
 **Patch release** — Godot 4.3 compatibility fix
