@@ -33,7 +33,7 @@ func _get_editor_errors(params: Dictionary) -> Dictionary:
 			var start: int = maxi(0, lines.size() - max_lines)
 			for i in range(start, lines.size()):
 				var line: String = lines[i]
-				if line.contains("ERROR") or line.contains("SCRIPT ERROR") or line.contains("Parse Error") or line.contains("WARNING") or line.contains("W ") or line.contains("WARN") or line.begins_with("GDScript"):
+				if line.contains("ERROR") or line.contains("SCRIPT ERROR") or line.contains("Parse Error") or line.contains("WARNING"):
 					errors.append(line.strip_edges())
 
 	# 2. Check the script editor for compile errors (red background lines)
