@@ -1,6 +1,6 @@
 # Godot MCP Pro
 
-> 147 AI-powered tools connecting Claude, Cursor, and AI assistants to the Godot 4 editor via the Model Context Protocol (MCP).
+> 162 AI-powered tools connecting Claude, Cursor, and AI assistants to the Godot 4 editor via the Model Context Protocol (MCP).
 
 ## Overview
 
@@ -12,7 +12,7 @@ AI Assistant <--stdio/MCP--> Node.js Server (TypeScript) <--WebSocket:6505--> Go
 
 The Godot plugin runs a WebSocket server inside the editor. The MCP server connects to it and translates MCP tool calls into editor commands. All mutations go through Godot's UndoRedo system.
 
-## 147 Tools across 23 Categories
+## 162 Tools across 23 Categories
 
 - Project (7): project info, filesystem tree, file search, project settings, UID conversion
 - Scene (9): scene tree, create/open/delete/save, play/stop, instancing

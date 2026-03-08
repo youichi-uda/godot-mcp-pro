@@ -4,6 +4,16 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.5.1 — 2026-03-08
+
+**Patch release** — AI Skills file for better out-of-the-box experience
+
+### New
+- **`skills.md`**: Added `addons/godot_mcp/skills.md` — a comprehensive guide for AI assistants covering all 162 tools, 10 practical workflows, best practices, and common pitfalls. Users can copy this to `.claude/skills.md` in their project root so Claude Code knows how to use the MCP tools effectively from the start.
+- **README**: Added setup step for copying `skills.md` to `.claude/skills.md`.
+
+---
+
 ## v1.5.0 — 2026-03-04
 
 **Feature** — Lite mode for MCP clients with tool count limits
