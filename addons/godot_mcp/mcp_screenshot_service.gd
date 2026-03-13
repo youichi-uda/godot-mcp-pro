@@ -6,6 +6,10 @@ const REQUEST_PATH := "user://mcp_screenshot_request"
 const SCREENSHOT_PATH := "user://mcp_screenshot.png"
 
 
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+
 func _process(_delta: float) -> void:
 	if FileAccess.file_exists(REQUEST_PATH):
 		_take_screenshot()
@@ -16,7 +20,8 @@ func _take_screenshot() -> void:
 	DirAccess.remove_absolute(REQUEST_PATH)
 
 	# Wait one frame so the viewport has a fully rendered image
-	await get_tree().process_frame
+	# process_always=true (default) so the timer ticks even when tree is paused
+	await get_tree().create_timer(0.05).timeout
 
 	var viewport := get_viewport()
 	if viewport == null:

@@ -63,16 +63,7 @@ If your MCP client has a tool count limit (e.g., Windsurf: 100, Cursor: ~40), us
 
 Lite mode includes: project, scene, node, script, editor, input, runtime, and input_map tools.
 
-### 5. AI Skills File (Recommended)
-
-Copy `addons/godot_mcp/skills.md` to `.claude/skills.md` in your Godot project root. This gives Claude Code knowledge of all available tools, common workflows, best practices, and pitfalls — so it can use the MCP tools more effectively from the start.
-
-```bash
-mkdir -p .claude
-cp addons/godot_mcp/skills.md .claude/skills.md
-```
-
-### 6. Use It
+### 5. Use It
 
 Open your Godot project with the plugin enabled, then use Claude Code to interact with the editor.
 

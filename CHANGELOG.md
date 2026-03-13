@@ -4,6 +4,18 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.5.2 — 2026-03-13
+
+**Bugfix** — Screenshot capture now works when the SceneTree is paused
+
+### Fixed
+- **`mcp_screenshot_service.gd`**: Added `process_mode = Node.PROCESS_MODE_ALWAYS` so the file-polling loop in `_process()` keeps running during pause. The other two autoloads (`mcp_input_service.gd`, `mcp_game_inspector_service.gd`) already had this — screenshot service was the only one missing it.
+- **`mcp_screenshot_service.gd`**: Replaced `await get_tree().process_frame` with `await get_tree().create_timer(0.05).timeout` — `process_frame` never fires when the tree is paused, but `create_timer()` with default `process_always=true` does.
+
+Thanks to **mrkielbasa** for reporting this bug!
+
+---
+
 ## v1.5.1 — 2026-03-08
 
 **Patch release** — AI Skills file for better out-of-the-box experience
