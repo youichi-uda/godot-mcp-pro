@@ -4,6 +4,15 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.5.3 — 2026-03-15
+
+**New tool** — `record_frames` for long-running debug observation
+
+### New
+- **`record_frames`**: Capture up to 600 screenshots saved as PNG files to `user://mcp_recorded_frames/`. Unlike `capture_frames` (which returns base64 images directly, max 30), this tool saves to disk and returns file paths — ideal for long-running debug sessions without flooding the AI context with image data. Supports optional `node_data` tracking for per-frame property snapshots (position, velocity, etc.).
+
+---
+
 ## v1.5.2 — 2026-03-13
 
 **Bugfix** — Screenshot capture now works when the SceneTree is paused

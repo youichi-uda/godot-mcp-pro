@@ -11,6 +11,7 @@ func get_commands() -> Dictionary:
 		"get_game_node_properties": _get_game_node_properties,
 		"set_game_node_property": _set_game_node_property,
 		"capture_frames": _capture_frames,
+		"record_frames": _record_frames,
 		"monitor_properties": _monitor_properties,
 		"execute_game_script": _execute_game_script,
 		"start_recording": _start_recording,
@@ -104,6 +105,28 @@ func _capture_frames(params: Dictionary) -> Dictionary:
 		"frame_interval": frame_interval,
 		"half_resolution": half_resolution,
 	}, timeout)
+
+
+func _record_frames(params: Dictionary) -> Dictionary:
+	var count: int = optional_int(params, "count", 30)
+	var frame_interval: int = optional_int(params, "frame_interval", 10)
+	var half_resolution: bool = optional_bool(params, "half_resolution", true)
+
+	# Dynamic timeout: 600 frames * 10 interval / 60fps = 100s max
+	var estimated_seconds: float = (count * frame_interval) / 60.0 + 5.0
+	var timeout := minf(estimated_seconds, 120.0)
+
+	var cmd_params := {
+		"count": count,
+		"frame_interval": frame_interval,
+		"half_resolution": half_resolution,
+	}
+
+	# Optional node_data
+	if params.has("node_data") and params["node_data"] is Dictionary:
+		cmd_params["node_data"] = params["node_data"]
+
+	return await _send_game_command("record_frames", cmd_params, timeout)
 
 
 func _monitor_properties(params: Dictionary) -> Dictionary:

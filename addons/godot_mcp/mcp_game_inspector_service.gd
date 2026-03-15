@@ -5,7 +5,7 @@ extends Node
 const REQUEST_PATH := "user://mcp_game_request"
 const RESPONSE_PATH := "user://mcp_game_response"
 
-enum State { IDLE, CAPTURING_FRAMES, MONITORING, RECORDING, MOVING_TO }
+enum State { IDLE, CAPTURING_FRAMES, MONITORING, RECORDING, MOVING_TO, RECORDING_FRAMES }
 
 var _state: State = State.IDLE
 var _pending_command: bool = false  # Crash recovery flag
@@ -19,6 +19,17 @@ var _captured_images: Array = []  # Array of base64 strings
 var _capture_node_path: String = ""  # Optional node to track per frame
 var _capture_node_props: Array = []  # Properties to snapshot per frame
 var _capture_frame_data: Array = []  # Array of per-frame node snapshots
+
+# Record frames state (file-based capture)
+var _record_frames_remaining: int = 0
+var _record_frame_interval: int = 1
+var _record_frame_counter: int = 0
+var _record_half_res: bool = true
+var _record_frame_index: int = 0
+var _record_dir: String = ""
+var _record_node_path: String = ""
+var _record_node_props: Array = []
+var _record_frame_data: Array = []
 
 # Recording state
 var _recording_events: Array = []
@@ -74,6 +85,8 @@ func _process(_delta: float) -> void:
 				_handle_request()
 		State.MOVING_TO:
 			_process_move_to(_delta)
+		State.RECORDING_FRAMES:
+			_process_record_frames()
 
 
 # ── Request handling ──────────────────────────────────────────────────────────
@@ -135,6 +148,8 @@ func _handle_request() -> void:
 			_cmd_navigate_to(params)
 		"move_to":
 			_cmd_move_to(params)
+		"record_frames":
+			_cmd_record_frames(params)
 		_:
 			_write_response({"error": "Unknown command: %s" % command})
 
@@ -363,6 +378,126 @@ func _finish_capture() -> void:
 	_write_response(response)
 	_captured_images.clear()
 	_capture_frame_data.clear()
+
+
+# ── record_frames (file-based) ────────────────────────────────────────────────
+
+func _cmd_record_frames(params: Dictionary) -> void:
+	_pending_command = false  # Async command
+	var count: int = clampi(params.get("count", 30), 1, 600)
+	var interval: int = maxi(params.get("frame_interval", 10), 1)
+	_record_half_res = params.get("half_resolution", true)
+
+	# Optional node_data tracking
+	_record_node_path = ""
+	_record_node_props = []
+	_record_frame_data.clear()
+	var node_data: Dictionary = params.get("node_data", {})
+	if not node_data.is_empty():
+		_record_node_path = node_data.get("node_path", "")
+		_record_node_props = node_data.get("properties", [])
+
+	# Prepare output directory
+	_record_dir = "user://mcp_recorded_frames"
+	var dir := DirAccess.open("user://")
+	if dir:
+		if dir.dir_exists("mcp_recorded_frames"):
+			# Clean previous frames
+			var old_dir := DirAccess.open(_record_dir)
+			if old_dir:
+				old_dir.list_dir_begin()
+				var fname := old_dir.get_next()
+				while fname != "":
+					if not old_dir.current_is_dir():
+						old_dir.remove(fname)
+					fname = old_dir.get_next()
+				old_dir.list_dir_end()
+		else:
+			dir.make_dir("mcp_recorded_frames")
+
+	_record_frames_remaining = count
+	_record_frame_interval = interval
+	_record_frame_counter = 0
+	_record_frame_index = 0
+	_state = State.RECORDING_FRAMES
+	_record_one_frame()
+
+
+func _process_record_frames() -> void:
+	if FileAccess.file_exists(REQUEST_PATH):
+		_state = State.IDLE
+		_handle_request()
+		return
+
+	_record_frame_counter += 1
+	if _record_frame_counter >= _record_frame_interval:
+		_record_frame_counter = 0
+		_record_one_frame()
+
+
+func _record_one_frame() -> void:
+	var viewport := get_viewport()
+	if viewport == null:
+		_finish_record_frames()
+		return
+
+	var image := viewport.get_texture().get_image()
+	if image == null:
+		_finish_record_frames()
+		return
+
+	if _record_half_res:
+		var new_size := image.get_size() / 2
+		image.resize(new_size.x, new_size.y, Image.INTERPOLATE_BILINEAR)
+
+	var filename := "frame_%04d.png" % _record_frame_index
+	var path := _record_dir + "/" + filename
+	image.save_png(path)
+
+	# Snapshot node properties if tracking
+	if not _record_node_path.is_empty() and not _record_node_props.is_empty():
+		var snap := {}
+		var node := get_tree().root.get_node_or_null(_record_node_path)
+		if node:
+			for prop_name in _record_node_props:
+				var val = node.get(prop_name)
+				snap[prop_name] = _serialize_value(val)
+		_record_frame_data.append(snap)
+
+	_record_frame_index += 1
+	_record_frames_remaining -= 1
+	if _record_frames_remaining <= 0:
+		_finish_record_frames()
+
+
+func _finish_record_frames() -> void:
+	_state = State.IDLE
+	var viewport := get_viewport()
+	var w := 0
+	var h := 0
+	if viewport:
+		var size := viewport.get_visible_rect().size
+		if _record_half_res:
+			size /= 2
+		w = int(size.x)
+		h = int(size.y)
+
+	var files: Array = []
+	for i in _record_frame_index:
+		files.append(_record_dir + "/frame_%04d.png" % i)
+
+	var response := {
+		"files": files,
+		"count": _record_frame_index,
+		"width": w,
+		"height": h,
+		"half_resolution": _record_half_res,
+		"directory": _record_dir,
+	}
+	if not _record_frame_data.is_empty():
+		response["frame_data"] = _record_frame_data
+	_write_response(response)
+	_record_frame_data.clear()
 
 
 # ── monitor_properties ────────────────────────────────────────────────────────
