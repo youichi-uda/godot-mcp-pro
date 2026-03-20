@@ -46,7 +46,42 @@ Add to your `.mcp.json`:
 }
 ```
 
-### 4. Lite Mode (Optional)
+### 4. Auto-Approve Tool Permissions (Recommended)
+
+Claude Code asks for permission each time a tool is called. To skip these prompts, copy one of the included permission presets to your Claude Code settings:
+
+**Option A: Conservative** (default — blocks destructive tools)
+
+```bash
+cp settings.local.json ~/.claude/settings.local.json
+```
+
+Allows 152 of 163 tools automatically. The following 11 tools will still require manual approval each time:
+
+| Blocked Tool | Reason |
+|---|---|
+| `delete_node` | Deletes a node from the scene |
+| `delete_scene` | Deletes a scene file from disk |
+| `remove_animation` | Removes an animation |
+| `remove_autoload` | Removes an autoload singleton |
+| `remove_state_machine_state` | Removes a state machine state |
+| `remove_state_machine_transition` | Removes a state machine transition |
+| `execute_editor_script` | Runs arbitrary code in the editor |
+| `execute_game_script` | Runs arbitrary code in the running game |
+| `export_project` | Triggers a project export |
+| `tilemap_clear` | Clears all cells in a TileMapLayer |
+
+**Option B: Permissive** (allows everything, denies dangerous commands)
+
+```bash
+cp settings.local.permissive.json ~/.claude/settings.local.json
+```
+
+Allows all 163 tools and all Bash commands. Explicitly denies destructive shell commands (`rm -rf`, `git push --force`, `git reset --hard`, etc.) and the same destructive MCP tools listed above.
+
+> **Note**: If you already have a `settings.local.json`, merge the `permissions` section manually instead of overwriting.
+
+### 5. Lite Mode (Optional)
 
 If your MCP client has a tool count limit (e.g., Windsurf: 100, Cursor: ~40), use Lite mode which registers 76 core tools instead of 162:
 
@@ -63,7 +98,7 @@ If your MCP client has a tool count limit (e.g., Windsurf: 100, Cursor: ~40), us
 
 Lite mode includes: project, scene, node, script, editor, input, runtime, and input_map tools.
 
-### 5. Use It
+### 6. Use It
 
 Open your Godot project with the plugin enabled, then use Claude Code to interact with the editor.
 

@@ -4,6 +4,17 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.6.1 — 2026-03-21
+
+**Permission Presets** — Auto-approve tool permissions for Claude Code
+
+### New
+- **`settings.local.json`** (conservative): Pre-configured permission file that auto-approves 152 of 163 tools. Destructive tools (`delete_node`, `delete_scene`, `execute_editor_script`, etc.) still require manual approval.
+- **`settings.local.permissive.json`**: Allows all 163 tools and all Bash commands, with an explicit deny list for dangerous shell commands (`rm -rf`, `git push --force`, `git reset --hard`, etc.) and destructive MCP tools.
+- Copy either file to `~/.claude/settings.local.json` to skip per-tool permission prompts.
+
+---
+
 ## v1.6.0 — 2026-03-21
 
 **Enhanced Editor Panel** — Activity log with response details, client monitor, and tool management

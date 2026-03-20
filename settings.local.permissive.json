@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Bash(*)",
+      "mcp__godot-mcp-pro__*"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -r /*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git checkout -- .)",
+      "Bash(git branch -D *)",
+      "Bash(shutdown*)",
+      "Bash(reboot*)",
+      "Bash(format *)",
+      "Bash(del /s *)",
+      "Bash(rmdir /s *)",
+      "mcp__godot-mcp-pro__delete_node",
+      "mcp__godot-mcp-pro__delete_scene",
+      "mcp__godot-mcp-pro__remove_animation",
+      "mcp__godot-mcp-pro__remove_autoload",
+      "mcp__godot-mcp-pro__remove_state_machine_state",
+      "mcp__godot-mcp-pro__remove_state_machine_transition",
+      "mcp__godot-mcp-pro__execute_editor_script",
+      "mcp__godot-mcp-pro__execute_game_script",
+      "mcp__godot-mcp-pro__export_project",
+      "mcp__godot-mcp-pro__tilemap_clear"
+    ]
+  }
+}
