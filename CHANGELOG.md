@@ -4,6 +4,22 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.6.0 — 2026-03-21
+
+**Enhanced Editor Panel** — Activity log with response details, client monitor, and tool management
+
+### New
+- **Activity tab**: Full command log showing method name, status, port, and timestamp. Toggle "Show Response Details" to inspect the JSON responses sent back to AI clients. Clear button to reset the log.
+- **Clients tab**: Real-time view of all 5 WebSocket ports (6505-6509) with connection status and elapsed time since connection.
+- **Tools tab**: Searchable list of all 163 tools with individual enable/disable checkboxes. Bulk "Enable All" / "Disable All" buttons. Disabled tools are persisted across sessions (`user://mcp_tool_config.cfg`) and return a clear error message to AI clients.
+
+### Changed
+- Status panel rebuilt with TabContainer (Activity / Clients / Tools)
+- WebSocket server now emits `command_completed` signal with full response data and source port
+- Connection time tracking per port for uptime display
+
+---
+
 ## v1.5.3 — 2026-03-15
 
 **New tool** — `record_frames` for long-running debug observation

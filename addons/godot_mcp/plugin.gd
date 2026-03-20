@@ -35,13 +35,13 @@ func _enter_tree() -> void:
 	var panel_scene: PackedScene = preload("res://addons/godot_mcp/ui/status_panel.tscn")
 	status_panel = panel_scene.instantiate()
 	add_control_to_bottom_panel(status_panel, "MCP Server")
-	status_panel.call_deferred("setup", websocket_server)
+	status_panel.call_deferred("setup", websocket_server, command_router)
 
 	# Inject MCP autoloads into project settings
 	_inject_autoloads()
 
 	websocket_server.start_server()
-	print("[MCP] Godot MCP Pro v1.4.0 started (ports 6505-6509)")
+	print("[MCP] Godot MCP Pro v1.6.0 started (ports 6505-6509)")
 
 
 func _exit_tree() -> void:

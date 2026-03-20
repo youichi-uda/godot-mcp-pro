@@ -1,6 +1,6 @@
 # Godot MCP Pro
 
-Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **162 powerful tools**.
+Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **163 powerful tools**.
 
 ## Architecture
 

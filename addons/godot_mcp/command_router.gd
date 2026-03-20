@@ -4,9 +4,13 @@ extends Node
 var editor_plugin: EditorPlugin
 
 var _command_handlers: Dictionary = {}  # method_name -> Callable
+var _disabled_tools: Dictionary = {}  # method_name -> true
+
+const TOOL_CONFIG_PATH := "user://mcp_tool_config.cfg"
 
 
 func _ready() -> void:
+	_load_tool_config()
 	_register_commands()
 
 
@@ -59,6 +63,14 @@ func execute(method: String, params: Dictionary) -> Dictionary:
 			}
 		}
 
+	if _disabled_tools.has(method):
+		return {
+			"error": {
+				"code": -32603,
+				"message": "Tool '%s' is disabled in MCP Server settings" % method
+			}
+		}
+
 	var handler: Callable = _command_handlers[method]
 	var result: Dictionary = await handler.call(params)
 	return result
@@ -66,3 +78,40 @@ func execute(method: String, params: Dictionary) -> Dictionary:
 
 func get_available_methods() -> Array:
 	return _command_handlers.keys()
+
+
+func is_tool_disabled(method: String) -> bool:
+	return _disabled_tools.has(method)
+
+
+func set_tool_disabled(method: String, disabled: bool) -> void:
+	if disabled:
+		_disabled_tools[method] = true
+	else:
+		_disabled_tools.erase(method)
+	_save_tool_config()
+
+
+func set_all_tools_disabled(disabled: bool) -> void:
+	if disabled:
+		for method: String in _command_handlers:
+			_disabled_tools[method] = true
+	else:
+		_disabled_tools.clear()
+	_save_tool_config()
+
+
+func _load_tool_config() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(TOOL_CONFIG_PATH) != OK:
+		return
+	for method: String in cfg.get_section_keys("disabled_tools"):
+		if cfg.get_value("disabled_tools", method, false):
+			_disabled_tools[method] = true
+
+
+func _save_tool_config() -> void:
+	var cfg := ConfigFile.new()
+	for method: String in _disabled_tools:
+		cfg.set_value("disabled_tools", method, true)
+	cfg.save(TOOL_CONFIG_PATH)

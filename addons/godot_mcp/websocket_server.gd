@@ -9,6 +9,7 @@ signal client_connected()
 signal client_disconnected()
 signal message_received(text: String)
 signal command_executed(method: String, success: bool)
+signal command_completed(method: String, success: bool, response: String, source_port: int)
 
 var command_router: Node
 
@@ -21,6 +22,7 @@ const BUFFER_SIZE := 16 * 1024 * 1024  # 16MB
 var _peers: Dictionary = {}  # port -> WebSocketPeer
 var _connected: Dictionary = {}  # port -> bool
 var _timers: Dictionary = {}  # port -> float (reconnect countdown)
+var _connect_times: Dictionary = {}  # port -> float (elapsed seconds since connect)
 var _running: bool = false
 
 
@@ -51,6 +53,18 @@ func get_client_count() -> int:
 		if _connected[p]:
 			count += 1
 	return count
+
+
+func get_connected_ports() -> Array[int]:
+	var ports: Array[int] = []
+	for p: int in _connected:
+		if _connected[p]:
+			ports.append(p)
+	return ports
+
+
+func get_port_connect_time(port: int) -> float:
+	return _connect_times.get(port, -1.0)
 
 
 func _try_connect(p: int) -> void:
@@ -86,9 +100,12 @@ func _process(delta: float) -> void:
 			WebSocketPeer.STATE_OPEN:
 				if not _connected.get(p, false):
 					_connected[p] = true
+					_connect_times[p] = 0.0
 					_timers[p] = 0.0
 					print("[MCP] Connected on port %d" % p)
 					client_connected.emit()
+				else:
+					_connect_times[p] = _connect_times.get(p, 0.0) + delta
 
 				while ws.get_available_packet_count() > 0:
 					var packet := ws.get_packet()
@@ -164,11 +181,17 @@ func _dispatch_message(text: String, source_port: int) -> void:
 func _execute_command(source_port: int, id: Variant, method: String, params: Dictionary) -> void:
 	var cmd_result: Dictionary = await command_router.execute(method, params)
 	if cmd_result.has("error"):
-		_send_response(source_port, id, null, cmd_result["error"])
+		var err_data: Variant = cmd_result["error"]
+		_send_response(source_port, id, null, err_data)
+		var response_text := JSON.stringify(err_data)
 		command_executed.emit(method, false)
+		command_completed.emit(method, false, response_text, source_port)
 	else:
-		_send_response(source_port, id, cmd_result.get("result", {}), null)
+		var result_data: Variant = cmd_result.get("result", {})
+		_send_response(source_port, id, result_data, null)
+		var response_text := JSON.stringify(result_data)
 		command_executed.emit(method, true)
+		command_completed.emit(method, true, response_text, source_port)
 
 
 func _send_response(source_port: int, id: Variant, result: Variant, err: Variant) -> void:
