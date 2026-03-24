@@ -161,7 +161,11 @@ func _set_animation_keyframe(params: Dictionary) -> Dictionary:
 
 	var key_idx := anim.track_insert_key(track_index, time, value)
 
-	return success({"track_index": track_index, "time": time, "key_index": key_idx})
+	var easing: float = float(params.get("easing", 1.0))
+	if easing != 1.0:
+		anim.track_set_key_transition(track_index, key_idx, easing)
+
+	return success({"track_index": track_index, "time": time, "key_index": key_idx, "easing": anim.track_get_key_transition(track_index, key_idx)})
 
 
 func _get_animation_info(params: Dictionary) -> Dictionary:
@@ -196,6 +200,7 @@ func _get_animation_info(params: Dictionary) -> Dictionary:
 			keys.append({
 				"time": anim.track_get_key_time(i, k),
 				"value": str(anim.track_get_key_value(i, k)),
+				"easing": anim.track_get_key_transition(i, k),
 			})
 		track_info["keys"] = keys
 		tracks.append(track_info)

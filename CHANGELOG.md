@@ -4,6 +4,34 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.6.3 — 2026-03-24
+
+**Camera Pan Fix** — Mouse drag events now bypass GUI layer to reach `_unhandled_input()`
+
+### Fixed
+- **Mouse drag not reaching `_unhandled_input()`**: `simulate_mouse_move` with `button_mask` (drag simulation) was consumed by GUI Controls (`mouse_filter=STOP`) before reaching `_unhandled_input()`. Camera pan, drag-to-select, and other drag-based mechanics that rely on `_unhandled_input()` now work correctly. Events with `button_mask > 0` automatically use `push_unhandled_input()` to bypass the GUI layer.
+
+### New
+- **`simulate_mouse_move` `unhandled` parameter**: Optional `unhandled` flag to force any mouse motion event to bypass GUI and go directly to `_unhandled_input()`. Auto-enabled when `button_mask > 0`.
+- **`simulate_sequence` `unhandled` support**: Sequence `mouse_motion` events also support the `unhandled` flag.
+
+---
+
+## v1.6.2 — 2026-03-24
+
+**Animation Easing & Mouse Drag Simulation** — Community-requested fixes
+
+### New
+- **`set_animation_keyframe` easing parameter**: Optional `easing` param (default 1.0) to control keyframe transition curves. Values: 1.0=linear, <1.0=ease-in, >1.0=ease-out, negative=in-out variants.
+- **`get_animation_info` easing field**: Each keyframe now returns its `easing` value.
+- **`simulate_mouse_move` button_mask**: New `button_mask` parameter (1=left, 2=right, 4=middle) enables drag simulation. Required for games that check `InputEventMouseMotion.button_mask` (e.g. camera pan with mouse drag).
+- **`simulate_sequence` button_mask**: Sequence events also support `button_mask` for drag operations.
+
+### Fixed
+- **Mouse sequence events**: `simulate_sequence` now correctly handles flat key format (`relative_x`, `relative_y`, `x`, `y`) in addition to nested format. Previously, mouse motion events in sequences had `relative=(0,0)` because the flat-to-nested conversion was missing.
+
+---
+
 ## v1.6.1 — 2026-03-21
 
 **Permission Presets** — Auto-approve tool permissions for Claude Code

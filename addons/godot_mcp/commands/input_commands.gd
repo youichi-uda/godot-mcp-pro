@@ -78,12 +78,18 @@ func _simulate_mouse_move(params: Dictionary) -> Dictionary:
 	var y: float = float(params.get("y", 0))
 	var rel_x: float = float(params.get("relative_x", 0))
 	var rel_y: float = float(params.get("relative_y", 0))
+	var button_mask: int = optional_int(params, "button_mask", 0)
+	var unhandled: bool = optional_bool(params, "unhandled", false)
 
 	var event := {
 		"type": "mouse_motion",
 		"position": {"x": x, "y": y},
 		"relative": {"x": rel_x, "y": rel_y},
+		"button_mask": button_mask,
 	}
+	# When button_mask > 0 (drag), auto-enable unhandled to bypass GUI consumption
+	if unhandled or button_mask > 0:
+		event["unhandled"] = true
 	_write_commands([event])
 	return success({"sent": true, "event": event})
 
