@@ -4,6 +4,15 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.6.4 — 2026-03-25
+
+**Enum Type Fix** — Fixes script error on play in certain Godot versions
+
+### Fixed
+- **`mcp_game_inspector_service.gd` State enum type error**: Explicit `State` type annotation on `_state` variable caused "Cannot assign a value of type mcp_game_inspector_service.gd.State to variable with specified type State" errors in some Godot versions. Changed to type inference (`:=`) which resolves the mismatch.
+
+---
+
 ## v1.6.3 — 2026-03-24
 
 **Camera Pan Fix** — Mouse drag events now bypass GUI layer to reach `_unhandled_input()`
