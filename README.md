@@ -1,3 +1,5 @@
+> **Language:** English | [日本語](docs/README.ja.md) | [Português (BR)](docs/README.pt-br.md) | [Español](docs/README.es.md) | [Русский](docs/README.ru.md) | [简体中文](docs/README.zh.md) | [हिन्दी](docs/README.hi.md)
+
 # Godot MCP Pro
 
 Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **163 powerful tools**.
