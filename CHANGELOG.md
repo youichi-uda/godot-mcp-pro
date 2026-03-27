@@ -4,6 +4,16 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.6.5 — 2026-03-27
+
+**assert_node_state Fix** — Game-side handler was missing, causing "Unknown command" error
+
+### Fixed
+- **`assert_node_state` missing game-side handler**: The command was registered in the TypeScript server and editor-side GDScript, but `mcp_game_inspector_service.gd` had no handler — returning "Unknown command" at runtime. This also broke node assertions within `run_test_scenario`. All 8 operators (eq, neq, gt, lt, gte, lte, contains, type_is) now work correctly.
+- **Sub-property access in assertions**: Properties like `position:y` now use `get_indexed()` instead of `get()`, enabling assertions on vector components and nested properties.
+
+---
+
 ## v1.6.4 — 2026-03-25
 
 **Enum Type Fix** — Fixes script error on play in certain Godot versions
