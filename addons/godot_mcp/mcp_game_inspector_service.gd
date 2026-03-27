@@ -150,6 +150,8 @@ func _handle_request() -> void:
 			_cmd_move_to(params)
 		"record_frames":
 			_cmd_record_frames(params)
+		"assert_node_state":
+			_cmd_assert_node_state(params)
 		_:
 			_write_response({"error": "Unknown command: %s" % command})
 
@@ -1547,6 +1549,67 @@ func _write_response(data: Dictionary) -> void:
 	if file:
 		file.store_string(json)
 		file.close()
+
+
+# ── assert_node_state ─────────────────────────────────────────────────────────
+
+func _cmd_assert_node_state(params: Dictionary) -> void:
+	var node_path: String = params.get("node_path", "")
+	if node_path.is_empty():
+		_write_response({"error": "node_path is required"})
+		return
+
+	var property: String = params.get("property", "")
+	if property.is_empty():
+		_write_response({"error": "property is required"})
+		return
+
+	var node := get_node_or_null(NodePath(node_path))
+	if node == null:
+		_write_response({"error": "Node not found: %s" % node_path})
+		return
+
+	var actual: Variant
+	if ":" in property:
+		actual = node.get_indexed(NodePath(property))
+	else:
+		actual = node.get(property)
+	var expected: Variant = params.get("expected", null)
+	var operator: String = params.get("operator", "eq")
+	var passed: bool = false
+
+	match operator:
+		"eq":
+			passed = (str(actual) == str(expected)) or (actual == expected)
+		"neq":
+			passed = (actual != expected) and (str(actual) != str(expected))
+		"gt":
+			passed = float(actual) > float(expected)
+		"lt":
+			passed = float(actual) < float(expected)
+		"gte":
+			passed = float(actual) >= float(expected)
+		"lte":
+			passed = float(actual) <= float(expected)
+		"contains":
+			passed = str(actual).contains(str(expected))
+		"type_is":
+			passed = typeof(actual) == int(expected) or type_string(typeof(actual)) == str(expected)
+		_:
+			_write_response({"error": "Unknown operator: %s" % operator})
+			return
+
+	_write_response({
+		"result": {
+			"assertion": "node_state",
+			"node_path": node_path,
+			"property": property,
+			"operator": operator,
+			"expected": _serialize_value(expected),
+			"actual": _serialize_value(actual),
+			"passed": passed,
+		}
+	})
 
 
 func _serialize_value(value: Variant) -> Variant:
