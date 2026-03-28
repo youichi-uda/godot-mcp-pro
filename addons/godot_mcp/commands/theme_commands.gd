@@ -9,6 +9,7 @@ func get_commands() -> Dictionary:
 		"set_theme_constant": _set_theme_constant,
 		"set_theme_font_size": _set_theme_font_size,
 		"set_theme_stylebox": _set_theme_stylebox,
+		"setup_control": _setup_control,
 		"get_theme_info": _get_theme_info,
 	}
 
@@ -163,6 +164,130 @@ func _set_theme_stylebox(params: Dictionary) -> Dictionary:
 	control.add_theme_stylebox_override(style_name, stylebox)
 
 	return success({"node_path": node_path, "name": style_name, "type": "StyleBoxFlat"})
+
+
+func _setup_control(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "node_path")
+	if result[1] != null:
+		return result[1]
+	var node_path: String = result[0]
+
+	var node := find_node_by_path(node_path)
+	if node == null or not (node is Control):
+		return error_not_found("Control node at '%s'" % node_path)
+
+	var control: Control = node
+	var applied: Array = []
+
+	# Anchor preset
+	var anchor_preset: String = optional_string(params, "anchor_preset", "")
+	if not anchor_preset.is_empty():
+		var preset_map := {
+			"top_left": Control.PRESET_TOP_LEFT,
+			"top_right": Control.PRESET_TOP_RIGHT,
+			"bottom_left": Control.PRESET_BOTTOM_LEFT,
+			"bottom_right": Control.PRESET_BOTTOM_RIGHT,
+			"center_left": Control.PRESET_CENTER_LEFT,
+			"center_top": Control.PRESET_CENTER_TOP,
+			"center_right": Control.PRESET_CENTER_RIGHT,
+			"center_bottom": Control.PRESET_CENTER_BOTTOM,
+			"center": Control.PRESET_CENTER,
+			"left_wide": Control.PRESET_LEFT_WIDE,
+			"top_wide": Control.PRESET_TOP_WIDE,
+			"right_wide": Control.PRESET_RIGHT_WIDE,
+			"bottom_wide": Control.PRESET_BOTTOM_WIDE,
+			"vcenter_wide": Control.PRESET_VCENTER_WIDE,
+			"hcenter_wide": Control.PRESET_HCENTER_WIDE,
+			"full_rect": Control.PRESET_FULL_RECT,
+		}
+		if preset_map.has(anchor_preset):
+			control.set_anchors_and_offsets_preset(preset_map[anchor_preset])
+			applied.append("anchor_preset=%s" % anchor_preset)
+
+	# Min size
+	var min_size_str: String = optional_string(params, "min_size", "")
+	if not min_size_str.is_empty():
+		var expr := Expression.new()
+		if expr.parse(min_size_str) == OK:
+			var val = expr.execute()
+			if val is Vector2:
+				control.custom_minimum_size = val
+				applied.append("min_size=%s" % min_size_str)
+
+	# Size flags horizontal
+	var sf_h: String = optional_string(params, "size_flags_h", "")
+	if not sf_h.is_empty():
+		var flags_map := {
+			"fill": Control.SIZE_FILL,
+			"expand": Control.SIZE_EXPAND,
+			"fill_expand": Control.SIZE_EXPAND_FILL,
+			"shrink_center": Control.SIZE_SHRINK_CENTER,
+			"shrink_end": Control.SIZE_SHRINK_END,
+		}
+		if flags_map.has(sf_h):
+			control.size_flags_horizontal = flags_map[sf_h]
+			applied.append("size_flags_h=%s" % sf_h)
+
+	# Size flags vertical
+	var sf_v: String = optional_string(params, "size_flags_v", "")
+	if not sf_v.is_empty():
+		var flags_map := {
+			"fill": Control.SIZE_FILL,
+			"expand": Control.SIZE_EXPAND,
+			"fill_expand": Control.SIZE_EXPAND_FILL,
+			"shrink_center": Control.SIZE_SHRINK_CENTER,
+			"shrink_end": Control.SIZE_SHRINK_END,
+		}
+		if flags_map.has(sf_v):
+			control.size_flags_vertical = flags_map[sf_v]
+			applied.append("size_flags_v=%s" % sf_v)
+
+	# Margins (for MarginContainer)
+	if params.has("margins") and params["margins"] is Dictionary:
+		var margins: Dictionary = params["margins"]
+		if control is MarginContainer:
+			if margins.has("left"):
+				control.add_theme_constant_override("margin_left", int(margins["left"]))
+			if margins.has("top"):
+				control.add_theme_constant_override("margin_top", int(margins["top"]))
+			if margins.has("right"):
+				control.add_theme_constant_override("margin_right", int(margins["right"]))
+			if margins.has("bottom"):
+				control.add_theme_constant_override("margin_bottom", int(margins["bottom"]))
+			applied.append("margins=%s" % str(margins))
+
+	# Separation (for VBox/HBoxContainer)
+	if params.has("separation"):
+		var sep: int = int(params["separation"])
+		if control is BoxContainer:
+			control.add_theme_constant_override("separation", sep)
+			applied.append("separation=%d" % sep)
+
+	# Grow direction horizontal
+	var grow_h: String = optional_string(params, "grow_h", "")
+	if not grow_h.is_empty():
+		var grow_map := {
+			"begin": Control.GROW_DIRECTION_BEGIN,
+			"end": Control.GROW_DIRECTION_END,
+			"both": Control.GROW_DIRECTION_BOTH,
+		}
+		if grow_map.has(grow_h):
+			control.grow_horizontal = grow_map[grow_h]
+			applied.append("grow_h=%s" % grow_h)
+
+	# Grow direction vertical
+	var grow_v: String = optional_string(params, "grow_v", "")
+	if not grow_v.is_empty():
+		var grow_map := {
+			"begin": Control.GROW_DIRECTION_BEGIN,
+			"end": Control.GROW_DIRECTION_END,
+			"both": Control.GROW_DIRECTION_BOTH,
+		}
+		if grow_map.has(grow_v):
+			control.grow_vertical = grow_map[grow_v]
+			applied.append("grow_v=%s" % grow_v)
+
+	return success({"node_path": node_path, "applied": applied, "count": applied.size()})
 
 
 func _get_theme_info(params: Dictionary) -> Dictionary:

@@ -2,11 +2,15 @@
 extends "res://addons/godot_mcp/commands/base_command.gd"
 
 
+const PropertyParser := preload("res://addons/godot_mcp/utils/property_parser.gd")
+
+
 func get_commands() -> Dictionary:
 	return {
 		"find_nodes_by_type": _find_nodes_by_type,
 		"find_signal_connections": _find_signal_connections,
 		"batch_set_property": _batch_set_property,
+		"batch_add_nodes": _batch_add_nodes,
 		"find_node_references": _find_node_references,
 		"get_scene_dependencies": _get_scene_dependencies,
 		"cross_scene_set_property": _cross_scene_set_property,
@@ -118,6 +122,87 @@ func _batch_set_recursive(node: Node, root: Node, type_name: String, property: S
 			affected.append(str(root.get_path_to(node)))
 	for child in node.get_children():
 		_batch_set_recursive(child, root, type_name, property, value, affected)
+
+
+func _batch_add_nodes(params: Dictionary) -> Dictionary:
+	if not params.has("nodes") or not params["nodes"] is Array:
+		return error_invalid_params("Missing required parameter: nodes (Array)")
+
+	var nodes_data: Array = params["nodes"]
+	if nodes_data.is_empty():
+		return error_invalid_params("nodes array is empty")
+
+	var root := get_edited_root()
+	if root == null:
+		return error_no_scene()
+
+	var created: Array = []
+	var errors: Array = []
+
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Batch add %d nodes" % nodes_data.size())
+
+	for i: int in nodes_data.size():
+		var entry: Dictionary = nodes_data[i]
+
+		if not entry.has("type") or not entry["type"] is String:
+			errors.append({"index": i, "error": "Missing or invalid 'type'"})
+			continue
+
+		var type: String = entry["type"]
+		if not ClassDB.class_exists(type):
+			errors.append({"index": i, "error": "Unknown node type: %s" % type})
+			continue
+
+		var parent_path: String = entry.get("parent_path", ".") if entry.has("parent_path") and entry["parent_path"] is String else "."
+		var node_name: String = entry.get("name", "") if entry.has("name") and entry["name"] is String else ""
+		var properties: Dictionary = entry.get("properties", {}) if entry.has("properties") and entry["properties"] is Dictionary else {}
+
+		var parent := find_node_by_path(parent_path)
+		if parent == null:
+			errors.append({"index": i, "error": "Parent node '%s' not found" % parent_path})
+			continue
+
+		var node: Node = ClassDB.instantiate(type)
+		if not node_name.is_empty():
+			node.name = node_name
+
+		for prop_name: String in properties:
+			var prop_exists := false
+			for prop in node.get_property_list():
+				if prop["name"] == prop_name:
+					prop_exists = true
+					break
+			if prop_exists:
+				var current: Variant = node.get(prop_name)
+				var target_type := typeof(current)
+				node.set(prop_name, PropertyParser.parse_value(properties[prop_name], target_type))
+
+		# Add directly so subsequent nodes can reference this as parent
+		parent.add_child(node)
+		node.set_owner(root)
+
+		# Register undo/redo (do methods re-add on redo, undo removes)
+		undo_redo.add_do_method(parent, "add_child", node)
+		undo_redo.add_do_method(node, "set_owner", root)
+		undo_redo.add_do_reference(node)
+		undo_redo.add_undo_method(parent, "remove_child", node)
+
+		created.append({
+			"index": i,
+			"type": type,
+			"name": str(node.name),
+			"parent": parent_path,
+			"node_path": str(root.get_path_to(node)),
+		})
+
+	# Commit without re-executing do methods (nodes already added)
+	undo_redo.commit_action(false)
+
+	var result := {"created": created, "count": created.size()}
+	if not errors.is_empty():
+		result["errors"] = errors
+	return success(result)
 
 
 func _find_node_references(params: Dictionary) -> Dictionary:

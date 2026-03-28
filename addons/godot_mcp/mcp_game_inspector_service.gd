@@ -5,9 +5,9 @@ extends Node
 const REQUEST_PATH := "user://mcp_game_request"
 const RESPONSE_PATH := "user://mcp_game_response"
 
-enum State { IDLE, CAPTURING_FRAMES, MONITORING, RECORDING, MOVING_TO, RECORDING_FRAMES }
+enum State { IDLE, CAPTURING_FRAMES, MONITORING, RECORDING, MOVING_TO, WATCHING_SIGNALS }
 
-var _state := State.IDLE
+var _state: State = State.IDLE
 var _pending_command: bool = false  # Crash recovery flag
 
 # Frame capture state
@@ -20,17 +20,6 @@ var _capture_node_path: String = ""  # Optional node to track per frame
 var _capture_node_props: Array = []  # Properties to snapshot per frame
 var _capture_frame_data: Array = []  # Array of per-frame node snapshots
 
-# Record frames state (file-based capture)
-var _record_frames_remaining: int = 0
-var _record_frame_interval: int = 1
-var _record_frame_counter: int = 0
-var _record_half_res: bool = true
-var _record_frame_index: int = 0
-var _record_dir: String = ""
-var _record_node_path: String = ""
-var _record_node_props: Array = []
-var _record_frame_data: Array = []
-
 # Recording state
 var _recording_events: Array = []
 var _recording_start_msec: int = 0
@@ -42,6 +31,14 @@ var _monitor_frames_remaining: int = 0
 var _monitor_frame_interval: int = 1
 var _monitor_frame_counter: int = 0
 var _monitor_timeline: Array = []  # Array of sample dicts
+
+# Signal watch state
+var _watch_nodes: Array = []  # Array of node paths being watched
+var _watch_signal_filter: Array = []  # Optional signal name filter
+var _watch_log: Array = []  # Array of {time_ms, node, signal, args}
+var _watch_start_msec: int = 0
+var _watch_duration_ms: int = 5000
+var _watch_connections: Array = []  # Array of {node, signal, callable} for cleanup
 
 # Move-to state
 var _moveto_target: Vector3 = Vector3.ZERO
@@ -85,8 +82,8 @@ func _process(_delta: float) -> void:
 				_handle_request()
 		State.MOVING_TO:
 			_process_move_to(_delta)
-		State.RECORDING_FRAMES:
-			_process_record_frames()
+		State.WATCHING_SIGNALS:
+			_process_watch_signals()
 
 
 # ── Request handling ──────────────────────────────────────────────────────────
@@ -148,10 +145,8 @@ func _handle_request() -> void:
 			_cmd_navigate_to(params)
 		"move_to":
 			_cmd_move_to(params)
-		"record_frames":
-			_cmd_record_frames(params)
-		"assert_node_state":
-			_cmd_assert_node_state(params)
+		"watch_signals":
+			_cmd_watch_signals(params)
 		_:
 			_write_response({"error": "Unknown command: %s" % command})
 
@@ -382,126 +377,6 @@ func _finish_capture() -> void:
 	_capture_frame_data.clear()
 
 
-# ── record_frames (file-based) ────────────────────────────────────────────────
-
-func _cmd_record_frames(params: Dictionary) -> void:
-	_pending_command = false  # Async command
-	var count: int = clampi(params.get("count", 30), 1, 600)
-	var interval: int = maxi(params.get("frame_interval", 10), 1)
-	_record_half_res = params.get("half_resolution", true)
-
-	# Optional node_data tracking
-	_record_node_path = ""
-	_record_node_props = []
-	_record_frame_data.clear()
-	var node_data: Dictionary = params.get("node_data", {})
-	if not node_data.is_empty():
-		_record_node_path = node_data.get("node_path", "")
-		_record_node_props = node_data.get("properties", [])
-
-	# Prepare output directory
-	_record_dir = "user://mcp_recorded_frames"
-	var dir := DirAccess.open("user://")
-	if dir:
-		if dir.dir_exists("mcp_recorded_frames"):
-			# Clean previous frames
-			var old_dir := DirAccess.open(_record_dir)
-			if old_dir:
-				old_dir.list_dir_begin()
-				var fname := old_dir.get_next()
-				while fname != "":
-					if not old_dir.current_is_dir():
-						old_dir.remove(fname)
-					fname = old_dir.get_next()
-				old_dir.list_dir_end()
-		else:
-			dir.make_dir("mcp_recorded_frames")
-
-	_record_frames_remaining = count
-	_record_frame_interval = interval
-	_record_frame_counter = 0
-	_record_frame_index = 0
-	_state = State.RECORDING_FRAMES
-	_record_one_frame()
-
-
-func _process_record_frames() -> void:
-	if FileAccess.file_exists(REQUEST_PATH):
-		_state = State.IDLE
-		_handle_request()
-		return
-
-	_record_frame_counter += 1
-	if _record_frame_counter >= _record_frame_interval:
-		_record_frame_counter = 0
-		_record_one_frame()
-
-
-func _record_one_frame() -> void:
-	var viewport := get_viewport()
-	if viewport == null:
-		_finish_record_frames()
-		return
-
-	var image := viewport.get_texture().get_image()
-	if image == null:
-		_finish_record_frames()
-		return
-
-	if _record_half_res:
-		var new_size := image.get_size() / 2
-		image.resize(new_size.x, new_size.y, Image.INTERPOLATE_BILINEAR)
-
-	var filename := "frame_%04d.png" % _record_frame_index
-	var path := _record_dir + "/" + filename
-	image.save_png(path)
-
-	# Snapshot node properties if tracking
-	if not _record_node_path.is_empty() and not _record_node_props.is_empty():
-		var snap := {}
-		var node := get_tree().root.get_node_or_null(_record_node_path)
-		if node:
-			for prop_name in _record_node_props:
-				var val = node.get(prop_name)
-				snap[prop_name] = _serialize_value(val)
-		_record_frame_data.append(snap)
-
-	_record_frame_index += 1
-	_record_frames_remaining -= 1
-	if _record_frames_remaining <= 0:
-		_finish_record_frames()
-
-
-func _finish_record_frames() -> void:
-	_state = State.IDLE
-	var viewport := get_viewport()
-	var w := 0
-	var h := 0
-	if viewport:
-		var size := viewport.get_visible_rect().size
-		if _record_half_res:
-			size /= 2
-		w = int(size.x)
-		h = int(size.y)
-
-	var files: Array = []
-	for i in _record_frame_index:
-		files.append(_record_dir + "/frame_%04d.png" % i)
-
-	var response := {
-		"files": files,
-		"count": _record_frame_index,
-		"width": w,
-		"height": h,
-		"half_resolution": _record_half_res,
-		"directory": _record_dir,
-	}
-	if not _record_frame_data.is_empty():
-		response["frame_data"] = _record_frame_data
-	_write_response(response)
-	_record_frame_data.clear()
-
-
 # ── monitor_properties ────────────────────────────────────────────────────────
 
 func _cmd_monitor_properties(params: Dictionary) -> void:
@@ -563,6 +438,132 @@ func _finish_monitor() -> void:
 		"frame_interval": _monitor_frame_interval,
 	})
 	_monitor_timeline.clear()
+
+
+# ── watch_signals ────────────────────────────────────────────────────────────
+
+func _cmd_watch_signals(params: Dictionary) -> void:
+	_pending_command = false  # Async command — don't trigger crash recovery
+
+	if not params.has("node_paths") or not params["node_paths"] is Array:
+		_write_response({"error": "node_paths array is required"})
+		return
+
+	var node_paths: Array = params["node_paths"]
+	if node_paths.is_empty():
+		_write_response({"error": "node_paths array is empty"})
+		return
+
+	_watch_signal_filter = params.get("signal_filter", []) if params.has("signal_filter") and params["signal_filter"] is Array else []
+	_watch_duration_ms = clampi(params.get("duration_ms", 5000), 500, 30000)
+	_watch_log.clear()
+	_watch_connections.clear()
+	_watch_nodes = node_paths
+
+	# Connect to signals on each node
+	var connected_count: int = 0
+	for node_path_str: String in node_paths:
+		var node := get_node_or_null(NodePath(node_path_str))
+		if node == null:
+			_watch_log.append({"warning": "Node not found: %s" % node_path_str})
+			continue
+
+		for sig_info: Dictionary in node.get_signal_list():
+			var sig_name: String = sig_info["name"]
+			# Apply filter if specified
+			if not _watch_signal_filter.is_empty():
+				var match_found := false
+				for filter_str: String in _watch_signal_filter:
+					if sig_name.contains(filter_str):
+						match_found = true
+						break
+				if not match_found:
+					continue
+
+			# Create a callable matched to the signal's argument count
+			var arg_count: int = sig_info["args"].size()
+			var cb := _make_signal_callback(node_path_str, sig_name, arg_count)
+			if cb.is_valid() and not node.is_connected(sig_name, cb):
+				node.connect(sig_name, cb)
+				_watch_connections.append({"node": node, "signal": sig_name, "callable": cb})
+				connected_count += 1
+
+	if connected_count == 0 and _watch_log.is_empty():
+		_write_response({"error": "No signals connected. Check node_paths and signal_filter."})
+		return
+
+	_watch_start_msec = Time.get_ticks_msec()
+	_state = State.WATCHING_SIGNALS
+
+
+func _on_signal_fired(node_path_str: String, sig_name: String, args: Array) -> void:
+	var elapsed: int = Time.get_ticks_msec() - _watch_start_msec
+	var entry: Dictionary = {
+		"time_ms": elapsed,
+		"node": node_path_str,
+		"signal": sig_name,
+	}
+	if not args.is_empty():
+		var serialized: Array = []
+		for a: Variant in args:
+			serialized.append(_serialize_value(a))
+		entry["args"] = serialized
+	_watch_log.append(entry)
+
+
+func _make_signal_callback(node_path_str: String, sig_name: String, arg_count: int) -> Callable:
+	var np := node_path_str
+	var sn := sig_name
+	match arg_count:
+		0:
+			return func() -> void: _on_signal_fired(np, sn, [])
+		1:
+			return func(a: Variant) -> void: _on_signal_fired(np, sn, [a])
+		2:
+			return func(a: Variant, b: Variant) -> void: _on_signal_fired(np, sn, [a, b])
+		3:
+			return func(a: Variant, b: Variant, c: Variant) -> void: _on_signal_fired(np, sn, [a, b, c])
+		4:
+			return func(a: Variant, b: Variant, c: Variant, d: Variant) -> void: _on_signal_fired(np, sn, [a, b, c, d])
+		_:
+			# For 5+ args, drop extra args and log without them
+			var cb := func() -> void: _on_signal_fired(np, sn, [])
+			return cb.unbind(arg_count)
+
+
+func _process_watch_signals() -> void:
+	# Check for abort (new request)
+	if FileAccess.file_exists(REQUEST_PATH):
+		_finish_watch_signals()
+		_state = State.IDLE
+		_handle_request()
+		return
+
+	var elapsed: int = Time.get_ticks_msec() - _watch_start_msec
+	if elapsed >= _watch_duration_ms:
+		_finish_watch_signals()
+
+
+func _finish_watch_signals() -> void:
+	# Disconnect all watchers
+	for conn: Dictionary in _watch_connections:
+		var node: Node = conn["node"] as Node
+		if is_instance_valid(node):
+			var sig_name: String = conn["signal"]
+			var cb: Callable = conn["callable"]
+			if node.is_connected(sig_name, cb):
+				node.disconnect(sig_name, cb)
+	_watch_connections.clear()
+
+	_state = State.IDLE
+	_write_response({
+		"node_paths": _watch_nodes,
+		"signal_filter": _watch_signal_filter,
+		"duration_ms": _watch_duration_ms,
+		"events": _watch_log,
+		"event_count": _watch_log.size(),
+	})
+	_watch_log.clear()
 
 
 # ── set_node_property ─────────────────────────────────────────────────────────
@@ -1549,67 +1550,6 @@ func _write_response(data: Dictionary) -> void:
 	if file:
 		file.store_string(json)
 		file.close()
-
-
-# ── assert_node_state ─────────────────────────────────────────────────────────
-
-func _cmd_assert_node_state(params: Dictionary) -> void:
-	var node_path: String = params.get("node_path", "")
-	if node_path.is_empty():
-		_write_response({"error": "node_path is required"})
-		return
-
-	var property: String = params.get("property", "")
-	if property.is_empty():
-		_write_response({"error": "property is required"})
-		return
-
-	var node := get_node_or_null(NodePath(node_path))
-	if node == null:
-		_write_response({"error": "Node not found: %s" % node_path})
-		return
-
-	var actual: Variant
-	if ":" in property:
-		actual = node.get_indexed(NodePath(property))
-	else:
-		actual = node.get(property)
-	var expected: Variant = params.get("expected", null)
-	var operator: String = params.get("operator", "eq")
-	var passed: bool = false
-
-	match operator:
-		"eq":
-			passed = (str(actual) == str(expected)) or (actual == expected)
-		"neq":
-			passed = (actual != expected) and (str(actual) != str(expected))
-		"gt":
-			passed = float(actual) > float(expected)
-		"lt":
-			passed = float(actual) < float(expected)
-		"gte":
-			passed = float(actual) >= float(expected)
-		"lte":
-			passed = float(actual) <= float(expected)
-		"contains":
-			passed = str(actual).contains(str(expected))
-		"type_is":
-			passed = typeof(actual) == int(expected) or type_string(typeof(actual)) == str(expected)
-		_:
-			_write_response({"error": "Unknown operator: %s" % operator})
-			return
-
-	_write_response({
-		"result": {
-			"assertion": "node_state",
-			"node_path": node_path,
-			"property": property,
-			"operator": operator,
-			"expected": _serialize_value(expected),
-			"actual": _serialize_value(actual),
-			"passed": passed,
-		}
-	})
 
 
 func _serialize_value(value: Variant) -> Variant:
