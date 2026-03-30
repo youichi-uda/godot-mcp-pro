@@ -98,11 +98,12 @@ func _process(delta: float) -> void:
 		DirAccess.remove_absolute(flag_path)
 		_try_debugger_continue()
 
-	# Periodically check for blocking editor dialogs
+	# Periodically check for blocking editor dialogs (only while MCP client is connected)
 	_dialog_check_timer += delta
 	if _dialog_check_timer >= _DIALOG_CHECK_INTERVAL:
 		_dialog_check_timer = 0.0
-		_auto_dismiss_dialogs()
+		if websocket_server and websocket_server.get_client_count() > 0:
+			_auto_dismiss_dialogs()
 
 
 func _try_debugger_continue() -> void:
