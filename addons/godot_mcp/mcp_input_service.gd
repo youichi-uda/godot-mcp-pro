@@ -76,7 +76,7 @@ func _dispatch_next_sequence_event() -> void:
 
 ## Dispatch an input event using the appropriate method.
 ## Mouse drag motions (button_mask > 0) and events with "unhandled" flag
-## use push_unhandled_input to bypass GUI consumption and reach _unhandled_input().
+## use push_input to bypass GUI consumption and reach _unhandled_input().
 ## This fixes camera pan/drag not working when UI Controls consume mouse events.
 func _dispatch_event(event: InputEvent, event_data: Dictionary = {}) -> void:
 	var force_unhandled: bool = event_data.get("unhandled", false)
@@ -86,7 +86,7 @@ func _dispatch_event(event: InputEvent, event_data: Dictionary = {}) -> void:
 	if force_unhandled:
 		var vp := get_viewport()
 		if vp:
-			vp.push_unhandled_input(event, true)
+			vp.push_input(event, true)
 		else:
 			Input.parse_input_event(event)
 	else:

@@ -952,10 +952,27 @@ func _cmd_click_button_by_text(params: Dictionary) -> void:
 
 	var rect := btn.get_global_rect()
 	var center := rect.get_center()
+	var btn_text_value := btn.text
+
+	# Capture button path before clicking — the click may trigger a scene
+	# transition that removes the node from the tree.
+	var btn_path := str(btn.get_path()) if btn.is_inside_tree() else ""
 
 	# Emit the pressed signal directly — more reliable than Input.parse_input_event
 	# which doesn't always reach GUI Controls.
 	btn.emit_signal("pressed")
+
+	# After the click, the node may have been freed due to scene transition.
+	# Re-check before accessing any node properties.
+	if not is_instance_valid(btn) or not btn.is_inside_tree():
+		_write_response({
+			"clicked": true,
+			"button_text": btn_text_value,
+			"button_path": btn_path,
+			"position": {"x": center.x, "y": center.y},
+			"note": "Button was removed from scene tree after click (likely a scene transition)",
+		})
+		return
 
 	_write_response({
 		"clicked": true,
