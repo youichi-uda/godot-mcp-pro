@@ -4,6 +4,30 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.7.1 — 2026-03-30
+
+**Bug Fixes** — Scene transition crash fix and deprecated API cleanup
+
+### Fixed
+- **`click_button_by_text` crash on scene transition**: Clicking a button that triggers a scene change (e.g., navigating from main menu to options) caused "Cannot get path of node as it is not in a scene tree" errors. Now caches button info before emitting the pressed signal and guards with `is_instance_valid()` / `is_inside_tree()` after the click.
+- **Deprecated `push_unhandled_input()` warning**: Replaced with `push_input()` in `mcp_input_service.gd` per Godot 4.x API updates.
+
+---
+
+## v1.7.0 — 2026-03-29
+
+**New Tools & Multi-Client Support** — 3 new tools for faster scene building, runtime signal debugging, and UI layout + instructions for non-Claude AI clients
+
+### New Tools
+- **`batch_add_nodes`**: Add multiple nodes in a single call. Nodes are processed in order so earlier nodes can be referenced as parents — build entire node trees in one shot instead of calling `add_node` repeatedly.
+- **`watch_signals`**: Monitor signal emissions on specified nodes in the running game for a set duration. Returns a timestamped log of every signal fired with arguments — great for debugging event flow and verifying signal connections.
+- **`setup_control`**: Configure a Control/Container node's layout in one call: anchor preset, min size, size flags, margins (MarginContainer), separation (VBox/HBoxContainer), and grow direction. Replaces 5+ `update_property` calls.
+
+### New
+- **`AGENTS.md` template**: Custom instructions for non-Claude AI clients (OpenAI Codex, opencode/ollama, Cursor, etc.). Includes editor vs runtime tool categorization, workflow patterns, formatting rules, and common pitfalls. Included in release zip.
+
+---
+
 ## v1.6.5 — 2026-03-27
 
 **assert_node_state Fix** — Game-side handler was missing, causing "Unknown command" error
