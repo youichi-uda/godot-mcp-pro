@@ -88,12 +88,21 @@ func _remove_autoloads() -> void:
 		ProjectSettings.save()
 
 
-func _process(_delta: float) -> void:
+var _dialog_check_timer: float = 0.0
+const _DIALOG_CHECK_INTERVAL: float = 0.5  # Check every 0.5 seconds
+
+func _process(delta: float) -> void:
 	# Check if game inspector requested debugger continue
 	var flag_path := OS.get_user_data_dir() + "/mcp_debugger_continue"
 	if FileAccess.file_exists(flag_path):
 		DirAccess.remove_absolute(flag_path)
 		_try_debugger_continue()
+
+	# Periodically check for blocking editor dialogs
+	_dialog_check_timer += delta
+	if _dialog_check_timer >= _DIALOG_CHECK_INTERVAL:
+		_dialog_check_timer = 0.0
+		_auto_dismiss_dialogs()
 
 
 func _try_debugger_continue() -> void:
@@ -118,6 +127,36 @@ func _find_debugger_continue_button(node: Node) -> Button:
 		if found:
 			return found
 	return null
+
+
+func _auto_dismiss_dialogs() -> void:
+	var base: Node = EditorInterface.get_base_control()
+	if not base:
+		return
+	_find_and_dismiss_dialogs(base)
+
+
+func _find_and_dismiss_dialogs(node: Node) -> void:
+	if node is AcceptDialog and node.visible:
+		var dialog: AcceptDialog = node
+		# Never dismiss file dialogs or non-modal popups
+		if dialog is FileDialog:
+			return
+		if not dialog.exclusive:
+			return
+		# Get dialog title/text for logging
+		var title := dialog.title
+		var text := dialog.dialog_text
+		# Accept the dialog (presses OK / confirms)
+		dialog.get_ok_button().emit_signal("pressed")
+		push_warning("[MCP] Auto-dismissed editor dialog: '%s' — %s" % [title, text])
+		return  # One dialog per check cycle to avoid side effects
+
+	for child in node.get_children():
+		# Only search visible Windows to keep the scan lightweight
+		if child is Window and not child.visible:
+			continue
+		_find_and_dismiss_dialogs(child)
 
 
 func _cleanup_temp_files() -> void:
