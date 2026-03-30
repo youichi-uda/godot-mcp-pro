@@ -104,6 +104,10 @@ Lite mode includes: project, scene, node, script, editor, input, runtime, and in
 
 Open your Godot project with the plugin enabled, then use Claude Code to interact with the editor.
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/youichi-uda-godot-mcp-pro).
+
 ## All 162 Tools
 
 ### Project Tools (7)
