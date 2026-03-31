@@ -105,6 +105,8 @@ func _load_tool_config() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(TOOL_CONFIG_PATH) != OK:
 		return
+	if not cfg.has_section("disabled_tools"):
+		return
 	for method: String in cfg.get_section_keys("disabled_tools"):
 		if cfg.get_value("disabled_tools", method, false):
 			_disabled_tools[method] = true

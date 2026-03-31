@@ -14,6 +14,7 @@ func get_commands() -> Dictionary:
 		"reload_project": _reload_project,
 		"get_signals": _get_signals,
 		"compare_screenshots": _compare_screenshots,
+		"set_auto_dismiss": _set_auto_dismiss,
 	}
 
 
@@ -535,4 +536,13 @@ func _compare_screenshots(params: Dictionary) -> Dictionary:
 		"width": width,
 		"height": height,
 		"diff_image_base64": diff_base64,
+	})
+
+
+func _set_auto_dismiss(params: Dictionary) -> Dictionary:
+	var enabled: bool = params.get("enabled", true)
+	editor_plugin.auto_dismiss_dialogs = enabled
+	return success({
+		"auto_dismiss": enabled,
+		"message": "Auto-dismiss dialogs %s" % ("enabled" if enabled else "disabled"),
 	})

@@ -4,6 +4,23 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.7.2 — 2026-03-31
+
+**Bug Fixes & Improvements** — execute_game_script robustness + auto-dismiss control
+
+### Fixed
+- **`execute_game_script` mixed indentation error**: User code with space indentation was prepended with tabs, causing "Mixed use of tabs and spaces" parse errors. Now auto-detects indent width and normalizes all leading spaces to tabs before wrapping.
+- **`execute_game_script` standalone lambda error**: Top-level `func` definitions in user code were nested inside the wrapper's `run()` function, triggering "Standalone lambdas cannot be accessed" parse errors. Now extracts top-level functions to class level.
+- **`command_router` crash on missing config section**: `_load_tool_config()` called `get_section_keys("disabled_tools")` without checking if the section exists, causing "Cannot get keys from nonexistent section" errors on fresh installs.
+
+### Changed
+- **Auto-dismiss dialogs now opt-in**: Previously auto-dismissed blocking editor dialogs whenever an MCP client was connected. Now disabled by default — AI must explicitly enable via the new `set_auto_dismiss` tool before operations that trigger reload/save dialogs.
+
+### New Tools
+- **`set_auto_dismiss`**: Enable or disable automatic dismissal of blocking editor dialogs (e.g., "Reload from disk?", "Save changes?"). Use before external file modifications, disable when done.
+
+---
+
 ## v1.7.1 — 2026-03-30
 
 **Bug Fixes** — Scene transition crash fix and deprecated API cleanup

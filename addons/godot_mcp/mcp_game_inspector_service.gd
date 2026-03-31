@@ -671,6 +671,45 @@ func _cmd_execute_script(params: Dictionary) -> void:
 		_write_response({"error": "code is required"})
 		return
 
+	# Normalize indentation: convert leading spaces to tabs
+	var raw_lines := code.split("\n")
+	var indent_size := 0
+	for raw_line in raw_lines:
+		var spaces := 0
+		while spaces < raw_line.length() and raw_line[spaces] == " ":
+			spaces += 1
+		if spaces > 0 and (indent_size == 0 or spaces < indent_size):
+			indent_size = spaces
+	if indent_size > 0:
+		var space_unit := " ".repeat(indent_size)
+		for idx in raw_lines.size():
+			var rl: String = raw_lines[idx]
+			var tabs := ""
+			while rl.begins_with(space_unit):
+				tabs += "\t"
+				rl = rl.substr(indent_size)
+			raw_lines[idx] = tabs + rl
+
+	# Separate top-level func definitions (place at class level, not inside run())
+	var class_funcs: PackedStringArray = []
+	var body_lines: PackedStringArray = []
+	var i := 0
+	while i < raw_lines.size():
+		var line: String = raw_lines[i]
+		if not line.begins_with("\t") and not line.begins_with(" ") and line.begins_with("func "):
+			class_funcs.append(line)
+			i += 1
+			while i < raw_lines.size():
+				var next_line: String = raw_lines[i]
+				if next_line.is_empty() or next_line.begins_with("\t"):
+					class_funcs.append(next_line)
+					i += 1
+				else:
+					break
+		else:
+			body_lines.append(line)
+			i += 1
+
 	var wrapped := """extends Node
 
 var _mcp_output: Array = []
@@ -684,9 +723,15 @@ func _safe_get(node: Node, prop: String, default: Variant = null) -> Variant:
 		return default
 	return node.get(prop) if prop in node else default
 
-func run() -> Variant:
 """
-	for line in code.split("\n"):
+	# Add user's top-level functions at class level
+	for func_line in class_funcs:
+		wrapped += func_line + "\n"
+	if class_funcs.size() > 0:
+		wrapped += "\n"
+
+	wrapped += "func run() -> Variant:\n"
+	for line in body_lines:
 		wrapped += "\t" + line + "\n"
 	wrapped += "\treturn _mcp_output\n"
 
