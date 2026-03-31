@@ -24,6 +24,10 @@ AI Assistant ←—stdio/MCP—→ Node.js Server ←—WebSocket:6505—→ God
 
 ### 2. Установка MCP-сервера
 
+> **Примечание**: Директория `server/` включена только в **полный пакет** (платный).
+> Этот GitHub-репозиторий содержит только **аддон (плагин)**.
+> Приобретите полный пакет на [godot-mcp.abyo.net](https://godot-mcp.abyo.net/), чтобы получить сервер.
+
 ```bash
 cd server
 npm install

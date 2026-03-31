@@ -24,6 +24,10 @@ Plugin enable करें: **Project → Project Settings → Plugins → Godot
 
 ### 2. MCP Server Install करें
 
+> **नोट**: `server/` डायरेक्टरी केवल **फुल पैकेज** (पेड) में शामिल है।
+> इस GitHub रिपॉजिटरी में केवल **addon (plugin)** है।
+> सर्वर प्राप्त करने के लिए [godot-mcp.abyo.net](https://godot-mcp.abyo.net/) पर फुल पैकेज खरीदें।
+
 ```bash
 cd server
 npm install

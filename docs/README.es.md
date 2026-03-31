@@ -24,6 +24,10 @@ Activa el plugin: **Proyecto → Configuración del Proyecto → Plugins → God
 
 ### 2. Instalar el Servidor MCP
 
+> **Nota**: El directorio `server/` solo se incluye en el **paquete completo** (de pago).
+> Este repositorio de GitHub contiene solo el **addon (plugin)**.
+> Adquiere el paquete completo en [godot-mcp.abyo.net](https://godot-mcp.abyo.net/) para obtener el servidor.
+
 ```bash
 cd server
 npm install

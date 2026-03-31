@@ -24,6 +24,10 @@ AI Assistant ←—stdio/MCP—→ Node.js Server ←—WebSocket:6505—→ God
 
 ### 2. 安装 MCP 服务器
 
+> **注意**：`server/` 目录仅包含在**完整包**（付费版）中。
+> 此 GitHub 仓库仅包含**插件（addon）**。
+> 请在 [godot-mcp.abyo.net](https://godot-mcp.abyo.net/) 购买完整包以获取服务器。
+
 ```bash
 cd server
 npm install

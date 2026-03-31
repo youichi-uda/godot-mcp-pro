@@ -24,6 +24,10 @@ Enable the plugin: **Project → Project Settings → Plugins → Godot MCP Pro 
 
 ### 2. Install the MCP Server
 
+> **Note**: The `server/` directory is included only in the **full package** (paid).
+> This GitHub repository contains the **addon (plugin) only**.
+> Purchase the full package at [godot-mcp.abyo.net](https://godot-mcp.abyo.net/) to get the server.
+
 ```bash
 cd server
 npm install

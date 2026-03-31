@@ -24,6 +24,10 @@ Ative o plugin: **Projeto → Configurações do Projeto → Plugins → Godot M
 
 ### 2. Instalar o Servidor MCP
 
+> **Nota**: O diretório `server/` está incluído apenas no **pacote completo** (pago).
+> Este repositório GitHub contém apenas o **addon (plugin)**.
+> Adquira o pacote completo em [godot-mcp.abyo.net](https://godot-mcp.abyo.net/) para obter o servidor.
+
 ```bash
 cd server
 npm install
