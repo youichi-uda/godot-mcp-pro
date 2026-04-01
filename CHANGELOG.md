@@ -4,6 +4,20 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.8.0 — 2026-04-02
+
+**New Features** — HTTP transport, screenshot file saving, custom class support
+
+### New Features
+- **Streamable HTTP transport**: New `--http` and `--http-port` flags for MCP clients that need HTTP instead of stdio. Starts an HTTP server at `http://127.0.0.1:8001/mcp` (default port).
+- **Screenshot `save_path` option**: `get_editor_screenshot` and `get_game_screenshot` now accept an optional `save_path` parameter (e.g. `res://screenshot.png`) to save directly to disk instead of returning base64, avoiding MCP response cache bloat.
+- **`add_node` custom class support**: `add_node` now resolves script-defined classes (`class_name`) in addition to built-in ClassDB types via `ProjectSettings.get_global_class_list()`.
+
+### Improved
+- **INSTALL.md**: Added "Updating to a New Version" section with step-by-step upgrade instructions.
+
+---
+
 ## v1.7.2 — 2026-03-31
 
 **Bug Fixes & Improvements** — execute_game_script robustness + auto-dismiss control

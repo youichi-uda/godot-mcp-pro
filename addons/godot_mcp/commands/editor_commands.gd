@@ -248,6 +248,19 @@ func _get_editor_screenshot(params: Dictionary) -> Dictionary:
 	if image == null:
 		return error_internal("Could not get image from viewport")
 
+	var save_path: String = params.get("save_path", "")
+	if save_path != "":
+		var abs_path := _resolve_save_path(save_path)
+		var err := image.save_png(abs_path)
+		if err != OK:
+			return error_internal("Failed to save screenshot: %s" % error_string(err))
+		return success({
+			"saved_path": save_path,
+			"width": image.get_width(),
+			"height": image.get_height(),
+			"format": "png",
+		})
+
 	var png_buffer := image.save_png_to_buffer()
 	var base64 := Marshalls.raw_to_base64(png_buffer)
 
@@ -302,11 +315,24 @@ func _get_game_screenshot(params: Dictionary) -> Dictionary:
 		DirAccess.remove_absolute(screenshot_path)
 		return error_internal("Failed to load screenshot: %s" % error_string(err))
 
+	# Clean up temp file
+	DirAccess.remove_absolute(screenshot_path)
+
+	var save_path_param: String = params.get("save_path", "")
+	if save_path_param != "":
+		var abs_path := _resolve_save_path(save_path_param)
+		var save_err := image.save_png(abs_path)
+		if save_err != OK:
+			return error_internal("Failed to save screenshot: %s" % error_string(save_err))
+		return success({
+			"saved_path": save_path_param,
+			"width": image.get_width(),
+			"height": image.get_height(),
+			"format": "png",
+		})
+
 	var png_buffer := image.save_png_to_buffer()
 	var base64 := Marshalls.raw_to_base64(png_buffer)
-
-	# Clean up
-	DirAccess.remove_absolute(screenshot_path)
 
 	return success({
 		"image_base64": base64,
@@ -314,6 +340,12 @@ func _get_game_screenshot(params: Dictionary) -> Dictionary:
 		"height": image.get_height(),
 		"format": "png",
 	})
+
+
+func _resolve_save_path(path: String) -> String:
+	if path.begins_with("res://") or path.begins_with("user://"):
+		return ProjectSettings.globalize_path(path)
+	return path
 
 
 func _execute_editor_script(params: Dictionary) -> Dictionary:
