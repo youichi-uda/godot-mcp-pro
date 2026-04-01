@@ -53,7 +53,7 @@ The Godot plugin runs a WebSocket server inside the editor. The MCP server conne
 
 ## Pricing
 
-$5 one-time purchase. Lifetime updates for v1.x. Unlimited projects and machines.
+$15 one-time purchase. Lifetime updates for v1.x. Unlimited projects and machines.
 
 ## Links
 
