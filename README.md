@@ -1,5 +1,3 @@
-> **Language:** English | [日本語](docs/README.ja.md) | [Português (BR)](docs/README.pt-br.md) | [Español](docs/README.es.md) | [Русский](docs/README.ru.md) | [简体中文](docs/README.zh.md) | [हिन्दी](docs/README.hi.md)
-
 # Godot MCP Pro
 
 Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **163 powerful tools**.
@@ -23,10 +21,6 @@ Copy the `addons/godot_mcp/` folder into your Godot project's `addons/` director
 Enable the plugin: **Project → Project Settings → Plugins → Godot MCP Pro → Enable**
 
 ### 2. Install the MCP Server
-
-> **Note**: The `server/` directory is included only in the **full package** (paid).
-> This GitHub repository contains the **addon (plugin) only**.
-> Purchase the full package at [godot-mcp.abyo.net](https://godot-mcp.abyo.net/) to get the server.
 
 ```bash
 cd server
@@ -52,44 +46,15 @@ Add to your `.mcp.json`:
 }
 ```
 
-### 4. Auto-Approve Tool Permissions (Recommended)
+### 4. Choose Your Mode
 
-Claude Code asks for permission each time a tool is called. To skip these prompts, copy one of the included permission presets to your Claude Code settings:
+Godot MCP Pro offers three modes to fit any client's tool limit:
 
-**Option A: Conservative** (default — blocks destructive tools)
-
-```bash
-cp settings.local.json ~/.claude/settings.local.json
-```
-
-Allows 152 of 163 tools automatically. The following 11 tools will still require manual approval each time:
-
-| Blocked Tool | Reason |
-|---|---|
-| `delete_node` | Deletes a node from the scene |
-| `delete_scene` | Deletes a scene file from disk |
-| `remove_animation` | Removes an animation |
-| `remove_autoload` | Removes an autoload singleton |
-| `remove_state_machine_state` | Removes a state machine state |
-| `remove_state_machine_transition` | Removes a state machine transition |
-| `execute_editor_script` | Runs arbitrary code in the editor |
-| `execute_game_script` | Runs arbitrary code in the running game |
-| `export_project` | Triggers a project export |
-| `tilemap_clear` | Clears all cells in a TileMapLayer |
-
-**Option B: Permissive** (allows everything, denies dangerous commands)
-
-```bash
-cp settings.local.permissive.json ~/.claude/settings.local.json
-```
-
-Allows all 163 tools and all Bash commands. Explicitly denies destructive shell commands (`rm -rf`, `git push --force`, `git reset --hard`, etc.) and the same destructive MCP tools listed above.
-
-> **Note**: If you already have a `settings.local.json`, merge the `permissions` section manually instead of overwriting.
-
-### 5. Lite Mode (Optional)
-
-If your MCP client has a tool count limit (e.g., Windsurf: 100, Cursor: ~40), use Lite mode which registers 76 core tools instead of 162:
+| Mode | Tools | Best For |
+|------|-------|----------|
+| **Full** (default) | 167 | Claude Code, Cline, VS Code Copilot |
+| **Lite** (`--lite`) | 80 | Windsurf (100 limit), JetBrains Junie (100 limit), Gemini CLI |
+| **Minimal** (`--minimal`) | 35 | Cursor (~40 limit), OpenCode, local LLMs with small context |
 
 ```json
 {
@@ -102,9 +67,54 @@ If your MCP client has a tool count limit (e.g., Windsurf: 100, Cursor: ~40), us
 }
 ```
 
-Lite mode includes: project, scene, node, script, editor, input, runtime, and input_map tools.
+Replace `--lite` with `--minimal` for the smallest footprint.
 
-### 6. Use It
+- **Lite** includes: project, scene, node, script, editor, input, runtime, and input_map tools.
+- **Minimal** includes: 35 essential tools — project info, scene management, node CRUD, script editing, editor errors, input simulation, and runtime inspection.
+
+### 5. CLI Mode (Alternative to MCP)
+
+For clients without MCP support, or when you want zero context overhead, use the CLI tool directly from a terminal/bash tool:
+
+```bash
+# Top-level help — shows all command groups
+node D:/dev/godot-mcp-pro/server/build/cli.js --help
+
+# Group help — shows commands in a group
+node D:/dev/godot-mcp-pro/server/build/cli.js node --help
+
+# Command help — shows options for a command
+node D:/dev/godot-mcp-pro/server/build/cli.js node add --help
+
+# Execute
+node D:/dev/godot-mcp-pro/server/build/cli.js project info
+node D:/dev/godot-mcp-pro/server/build/cli.js scene play
+node D:/dev/godot-mcp-pro/server/build/cli.js node add --type CharacterBody3D --name Player
+```
+
+The CLI connects directly to the Godot editor plugin via WebSocket. It requires:
+- Godot editor running with the MCP plugin enabled
+- An available port in the 6505-6509 range
+
+**Advantage**: LLMs discover capabilities progressively via `--help` instead of loading all tool definitions upfront. This works with any LLM client that has terminal access, regardless of tool count limits.
+
+### 6. Client Compatibility
+
+| Client | Recommended Mode | Notes |
+|--------|-----------------|-------|
+| Claude Code | Full (default) | Deferred tool loading — minimal context cost |
+| VS Code Copilot | Full | Virtual Tools auto-group tools |
+| OpenAI Codex CLI | Full | MCPSearch defers overflow |
+| Cline | Full | No hard limit; use `enabledTools` to whitelist |
+| Roo Code | Full | No hard limit |
+| Windsurf | Lite | 100 tool limit |
+| JetBrains Junie | Lite | 100 tool limit |
+| Gemini CLI | Lite | ~100 client limit; use `excludeTools` for finer control |
+| Cursor | Minimal | ~40 tool limit |
+| OpenCode | Minimal or CLI | Models degrade past ~40 tools |
+| Local LLMs (LM Studio, etc.) | Minimal or CLI | Context window is the bottleneck |
+
+### 7. Use It
 
 Open your Godot project with the plugin enabled, then use Claude Code to interact with the editor.
 

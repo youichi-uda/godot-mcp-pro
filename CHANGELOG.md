@@ -4,6 +4,23 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.9.0 — 2026-04-05
+
+**Universal Compatibility** — Minimal mode, CLI tool, and test suite
+
+### New Features
+- **Minimal mode (`--minimal`)**: Registers only 35 essential tools for clients with tight tool limits (Cursor ~40, OpenCode, local LLMs with small context windows). Covers project info, scene management, node CRUD, script editing, editor errors, input simulation, and runtime inspection.
+- **CLI tool (`godot-cli`)**: Command-line interface for controlling Godot directly from a terminal. LLMs discover capabilities progressively via `--help` instead of loading all tool definitions upfront — zero context overhead, works with any client that has bash/terminal access. 7 command groups: project, scene, node, script, editor, input, runtime.
+- **Test suite**: Added vitest with 47 unit tests covering tool-filter, error utilities, zod coercion, and CLI help/error handling.
+
+### Improved
+- **Client compatibility guide**: README and landing page now include a compatibility matrix for 12+ MCP clients with recommended mode for each (Full/Lite/Minimal/CLI).
+- **Landing page**: Added "Choose Your Mode" setup step, CLI documentation, and new FAQ entry for tool count limits.
+- **`print_verbose` for connect/disconnect**: WebSocket connect/disconnect messages in the Godot plugin now use `print_verbose()` instead of `print()`, eliminating terminal spam during normal operation.
+- **Per-client instruction files**: `instructions/` folder with ready-to-copy instruction files for 12 AI clients (Claude Code, Cursor, Cline, Windsurf, Gemini CLI, Codex CLI, OpenCode, Roo Code, JetBrains/Junie, Amazon Q, Continue, Augment). Includes CLI usage documentation.
+
+---
+
 ## v1.8.1 — 2026-04-04
 
 **Bug Fix** — @export node reference support in update_property
