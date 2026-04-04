@@ -257,6 +257,20 @@ func _update_property(params: Dictionary) -> Dictionary:
 	var target_type := typeof(old_value)
 	var parsed_value: Variant = PropertyParser.parse_value(value, target_type)
 
+	# Handle @export node references (e.g. @export var hud: HUD)
+	# typeof() returns TYPE_NIL when unset or TYPE_OBJECT when set,
+	# neither resolves a string path to a node — check the property hint instead
+	if value is String:
+		for prop in node.get_property_list():
+			if prop["name"] == property and prop["hint"] == PROPERTY_HINT_NODE_TYPE:
+				var target_node: Node = node.get_node_or_null(NodePath(value))
+				if target_node == null:
+					target_node = root.get_node_or_null(NodePath(value))
+				if target_node == null:
+					return error_not_found("Node '%s'" % value, "Could not resolve node path for property '%s'" % property)
+				parsed_value = target_node
+				break
+
 	var undo_redo := get_undo_redo()
 	undo_redo.create_action("MCP: Set %s.%s" % [node.name, property])
 	undo_redo.add_do_property(node, property, parsed_value)

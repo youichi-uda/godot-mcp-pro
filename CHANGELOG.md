@@ -4,6 +4,15 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.8.1 — 2026-04-04
+
+**Bug Fix** — @export node reference support in update_property
+
+### Fixed
+- **`update_property` @export node references**: Setting `@export var` node references (e.g. `@export var hud: HUD`) via `update_property` now correctly resolves string paths to actual node references. Previously, `typeof(old_value)` returned `TYPE_NIL` for unset exports and `TYPE_OBJECT` for set ones, neither of which resolved the path string to a node. The fix checks `PROPERTY_HINT_NODE_TYPE` from the property's metadata to detect node reference exports and resolve accordingly. (Fixes #12)
+
+---
+
 ## v1.8.0 — 2026-04-02
 
 **New Features** — HTTP transport, screenshot file saving, custom class support
