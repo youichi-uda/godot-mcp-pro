@@ -150,6 +150,9 @@ set_physics_layers   → name collision layers (player, enemy, world, etc.)
 
 ## Important Rules & Pitfalls
 
+### Prefer Inspector Properties Over Code
+When changing visual properties (colors, sizes, theme overrides, transforms, etc.), use `update_property` to set them directly on the node. This keeps values visible in the Godot inspector and easy to tweak by hand. Only write GDScript when the property isn't available in the inspector or needs to be dynamic at runtime.
+
 ### Property Values
 Properties are auto-parsed from strings. Use these formats:
 - Vector2: `"Vector2(100, 200)"`
@@ -254,6 +257,27 @@ add_state_machine_state         → add states (idle, walk, run, jump)
 add_state_machine_transition    → define transitions between states
 set_tree_parameter              → control blend parameters
 ```
+
+### Code-to-Inspector Migration
+
+Move hardcoded visual properties from GDScript to the inspector for easier tweaking:
+
+```
+read_script          → find hardcoded property assignments
+get_node_properties  → check current inspector values
+update_property      → set values as node properties
+edit_script          → remove hardcoded lines from script
+save_scene           → persist inspector changes
+validate_script      → verify script still compiles
+```
+
+Example — a script sets `modulate = Color(1, 0, 0, 1)` in `_ready()`:
+1. `read_script` to find the line
+2. `update_property` with `node_path`, `property: "modulate"`, `value: "Color(1, 0, 0, 1)"`
+3. `edit_script` to remove the `modulate = ...` line from `_ready()`
+4. `save_scene` + `validate_script`
+
+This applies to: colors, positions, sizes, theme overrides, material properties, visibility, margins, anchors, and any property that doesn't need to change at runtime.
 
 ## Recommended Workflow Order
 

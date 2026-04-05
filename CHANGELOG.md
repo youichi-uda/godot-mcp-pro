@@ -4,6 +4,23 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.9.2 — 2026-04-06
+
+**New Features** — Setup CLI, code-to-inspector workflow, CLI click fix
+
+### New Features
+- **Setup CLI (`setup.js`)**: One-command server setup and management. Commands: `install` (npm install + build), `check-update` (GitHub release check with semver comparison), `configure` (auto-detect AI client and generate .mcp.json), `doctor` (environment diagnostics).
+- **Code-to-inspector migration workflow**: New guideline in AGENTS.md and skills.md instructing AI to prefer `update_property` over hardcoded GDScript for visual properties (colors, sizes, theme overrides). Includes step-by-step migration pattern.
+
+### Fixed
+- **CLI `input click --button` mapping**: The CLI sent string values ("left", "right", "middle") but the plugin expects numeric indices (1, 2, 3). Now correctly maps `left`→1, `right`→2, `middle`→3. (Thanks @Gogomy)
+
+### Improved
+- **INSTALL.md**: Added quick setup flow using `setup.js` for both fresh install and updates.
+- **Instruction files**: All 12 client instruction files updated with new workflow patterns.
+
+---
+
 ## v1.9.1 — 2026-04-05
 
 **Bug Fix** — GODOT_MCP_PORT env var now respected + Cursor Full mode
