@@ -74,27 +74,30 @@ Replace `--lite` with `--minimal` for the smallest footprint.
 
 ### 5. CLI Mode (Alternative to MCP)
 
-For clients without MCP support, or when you want zero context overhead, use the CLI tool directly from a terminal/bash tool:
+For clients without MCP support, or when you want zero context overhead, use the CLI directly from a terminal/bash tool. The CLI requires the server to be built first (Step 2).
 
 ```bash
 # Top-level help — shows all command groups
-node D:/dev/godot-mcp-pro/server/build/cli.js --help
+node /path/to/server/build/cli.js --help
 
 # Group help — shows commands in a group
-node D:/dev/godot-mcp-pro/server/build/cli.js node --help
+node /path/to/server/build/cli.js node --help
 
 # Command help — shows options for a command
-node D:/dev/godot-mcp-pro/server/build/cli.js node add --help
+node /path/to/server/build/cli.js node add --help
 
 # Execute
-node D:/dev/godot-mcp-pro/server/build/cli.js project info
-node D:/dev/godot-mcp-pro/server/build/cli.js scene play
-node D:/dev/godot-mcp-pro/server/build/cli.js node add --type CharacterBody3D --name Player
+node /path/to/server/build/cli.js project info
+node /path/to/server/build/cli.js scene play
+node /path/to/server/build/cli.js node add --type CharacterBody3D --name Player
 ```
+
+Replace `/path/to/` with the actual path where you extracted the files.
 
 The CLI connects directly to the Godot editor plugin via WebSocket. It requires:
 - Godot editor running with the MCP plugin enabled
-- An available port in the 6505-6509 range
+- Server built (`node setup.js install`)
+- An available port in the 6510-6514 range
 
 **Advantage**: LLMs discover capabilities progressively via `--help` instead of loading all tool definitions upfront. This works with any LLM client that has terminal access, regardless of tool count limits.
 

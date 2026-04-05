@@ -4,6 +4,17 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.9.3 — 2026-04-06
+
+**Improvement** — Pre-built JS in release zip, docs cleanup
+
+### Improved
+- **Pre-built JS files included in release zip**: `build/setup.js`, `build/cli.js`, and all other compiled files are now included. Users can run `node build/setup.js install` immediately after extracting — no need to manually run `npm run build` first.
+- **CLI naming unified in docs**: Removed `godot-cli` shorthand. All docs consistently use `node build/cli.js`. Added note that server must be built before CLI use.
+- **CLI help port range fixed**: `--help` output now correctly shows 6510-6514 (CLI range), not 6505-6509 (MCP server range).
+
+---
+
 ## v1.9.2 — 2026-04-06
 
 **New Features** — Setup CLI, code-to-inspector workflow, CLI click fix
