@@ -52,9 +52,9 @@ Godot MCP Pro offers three modes to fit any client's tool limit:
 
 | Mode | Tools | Best For |
 |------|-------|----------|
-| **Full** (default) | 167 | Claude Code, Cline, VS Code Copilot |
+| **Full** (default) | 167 | Claude Code, Cline, VS Code Copilot, Cursor |
 | **Lite** (`--lite`) | 80 | Windsurf (100 limit), JetBrains Junie (100 limit), Gemini CLI |
-| **Minimal** (`--minimal`) | 35 | Cursor (~40 limit), OpenCode, local LLMs with small context |
+| **Minimal** (`--minimal`) | 35 | OpenCode, local LLMs with small context |
 
 ```json
 {
