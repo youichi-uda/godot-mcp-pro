@@ -110,7 +110,7 @@ The CLI connects directly to the Godot editor plugin via WebSocket. It requires:
 | Windsurf | Lite | 100 tool limit |
 | JetBrains Junie | Lite | 100 tool limit |
 | Gemini CLI | Lite | ~100 client limit; use `excludeTools` for finer control |
-| Cursor | Minimal | ~40 tool limit |
+| Cursor | Full | Tool limit removed (Dynamic Context Discovery) |
 | OpenCode | Minimal or CLI | Models degrade past ~40 tools |
 | Local LLMs (LM Studio, etc.) | Minimal or CLI | Context window is the bottleneck |
 

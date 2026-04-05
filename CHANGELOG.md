@@ -4,6 +4,18 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.9.1 — 2026-04-05
+
+**Bug Fix** — GODOT_MCP_PORT env var now respected + Cursor Full mode
+
+### Fixed
+- **`GODOT_MCP_PORT` env var ignored**: The server always scanned ports 6505-6509 for the first free port, ignoring the explicitly configured port. Now when `GODOT_MCP_PORT` is set, the server uses that port directly without scanning. (Fixes #13)
+
+### Changed
+- **Cursor moved to Full mode**: Cursor removed its 40-tool limit with Dynamic Context Discovery — all 167 tools now work in Full mode. (Thanks to @CrossBread for PR #14)
+
+---
+
 ## v1.9.0 — 2026-04-05
 
 **Universal Compatibility** — Minimal mode, CLI tool, and test suite
