@@ -7,7 +7,7 @@ const RESPONSE_PATH := "user://mcp_game_response"
 
 enum State { IDLE, CAPTURING_FRAMES, MONITORING, RECORDING, MOVING_TO, WATCHING_SIGNALS }
 
-var _state: State = State.IDLE
+var _state := State.IDLE
 var _pending_command: bool = false  # Crash recovery flag
 
 # Frame capture state

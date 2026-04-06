@@ -4,6 +4,16 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.9.4 — 2026-04-06
+
+**Bug Fixes** — State enum type regression, zip plugin version
+
+### Fixed
+- **`mcp_game_inspector_service.gd` State enum type error (regression)**: `var _state: State = State.IDLE` caused "Cannot assign a value of type mcp_game_inspector_service.gd.State to variable with specified type State" in some Godot versions. Changed back to `var _state := State.IDLE` (type inference). This was originally fixed in v1.6.4 but regressed. (Thanks @kalish)
+- **Release zip contained wrong plugin version**: v1.9.3 zip shipped with plugin.cfg showing v1.9.2 due to a build order issue. Fixed build pipeline to ensure public repo is synced before zip creation.
+
+---
+
 ## v1.9.3 — 2026-04-06
 
 **Improvement** — Pre-built JS in release zip, docs cleanup
