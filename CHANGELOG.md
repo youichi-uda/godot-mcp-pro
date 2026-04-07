@@ -4,6 +4,30 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.10.0 — 2026-04-07
+
+**New Tools & Quality Sweep** — Editor camera control, 169 tools, comprehensive audit fixes
+
+### New Tools
+- **`get_editor_camera`**: Get the 3D editor viewport camera position, rotation, and FOV. Useful for understanding the current view before taking screenshots.
+- **`set_editor_camera`**: Move the 3D editor viewport camera to a specific position and orientation. Supports position, rotation, look_at target, and FOV. Use this to frame a view before screenshots to validate changes visually.
+
+### Fixed
+- **`plugin.gd` version display**: Was hardcoded to "v1.6.0" since initial release. Now dynamically reads from `plugin.cfg` — always shows the correct version.
+- **Tool count inconsistency**: Was showing 162/163/167 across different files. All references now correctly say 169.
+- **`node setup.js` path**: All docs and help text now correctly say `node build/setup.js`.
+- **`configure` cwd issue**: INSTALL.md now clearly separates `install` (run from server/) and `configure` (run from Godot project root) to avoid `.mcp.json` being placed in the wrong directory.
+- **INSTALL.md**: Fixed step numbering skip, stale tool count (49→169), port range (6505-6514).
+- **README.md**: Replaced hardcoded dev paths with `/path/to/` placeholders.
+
+### Improved
+- **"v1.x" wording removed**: All pricing and marketing text now says "lifetime updates" without version scope.
+- **Plugin port range**: WebSocket comment and connection range expanded to 6505-6514 (6510-6514 reserved for CLI).
+- **Pre-built JS in release zip**: `build/setup.js` and `build/cli.js` work immediately after extract + `npm install`.
+- **Claude Desktop support**: Confirmed working, added to configure auto-detection.
+
+---
+
 ## v1.9.4 — 2026-04-06
 
 **Bug Fixes** — State enum type regression, zip plugin version

@@ -1,6 +1,6 @@
 # Godot MCP Pro
 
-Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **163 powerful tools**.
+Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **169 powerful tools**.
 
 ## Architecture
 
@@ -37,7 +37,7 @@ Add to your `.mcp.json`:
   "mcpServers": {
     "godot-mcp-pro": {
       "command": "node",
-      "args": ["D:/dev/godot-mcp-pro/server/build/index.js"],
+      "args": ["/path/to/server/build/index.js"],
       "env": {
         "GODOT_MCP_PORT": "6505"
       }
@@ -61,7 +61,7 @@ Godot MCP Pro offers three modes to fit any client's tool limit:
   "mcpServers": {
     "godot-mcp-pro": {
       "command": "node",
-      "args": ["D:/dev/godot-mcp-pro/server/build/index.js", "--lite"]
+      "args": ["/path/to/server/build/index.js", "--lite"]
     }
   }
 }
@@ -96,7 +96,7 @@ Replace `/path/to/` with the actual path where you extracted the files.
 
 The CLI connects directly to the Godot editor plugin via WebSocket. It requires:
 - Godot editor running with the MCP plugin enabled
-- Server built (`node setup.js install`)
+- Server built (`node build/setup.js install`)
 - An available port in the 6510-6514 range
 
 **Advantage**: LLMs discover capabilities progressively via `--help` instead of loading all tool definitions upfront. This works with any LLM client that has terminal access, regardless of tool count limits.
@@ -121,7 +121,7 @@ The CLI connects directly to the Godot editor plugin via WebSocket. It requires:
 
 Open your Godot project with the plugin enabled, then use Claude Code to interact with the editor.
 
-## All 162 Tools
+## All 169 Tools
 
 ### Project Tools (7)
 | Tool | Description |
@@ -426,7 +426,7 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | Asset/AI | 0 | 0 | 1 | 6 | 0 | 0 | 0 |
 | Material | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | Other | 0 | 0 | 9 | 5 | 5 | 2 | 1 |
-| **Total** | **162** | ~30 | **32** | **39** | **13** | **19** | **10** |
+| **Total** | **169** | ~30 | **32** | **39** | **13** | **19** | **10** |
 
 ### Feature Matrix
 
@@ -480,4 +480,4 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 
 ## License
 
-Proprietary — see [LICENSE](LICENSE) for details. Purchase includes lifetime updates for v1.x.
+Proprietary — see [LICENSE](LICENSE) for details. Purchase includes lifetime updates.

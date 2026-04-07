@@ -42,7 +42,11 @@ func _enter_tree() -> void:
 	_inject_autoloads()
 
 	websocket_server.start_server()
-	print("[MCP] Godot MCP Pro v1.6.0 started (ports 6505-6509)")
+	var cfg := ConfigFile.new()
+	var ver := "unknown"
+	if cfg.load("res://addons/godot_mcp/plugin.cfg") == OK:
+		ver = cfg.get_value("plugin", "version", "unknown")
+	print("[MCP] Godot MCP Pro v%s started (ports 6505-6514)" % ver)
 
 
 func _exit_tree() -> void:

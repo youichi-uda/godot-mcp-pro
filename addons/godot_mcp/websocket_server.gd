@@ -2,8 +2,9 @@
 extends Node
 
 ## Multi-connection WebSocket client.
-## Connects to multiple Node.js MCP server instances on ports 6505-6509.
+## Connects to multiple Node.js MCP server instances on ports 6505-6514.
 ## Each Claude Code session gets its own port; Godot talks to all of them.
+## Ports 6505-6509: MCP servers (stdio), 6510-6514: CLI tool connections.
 
 signal client_connected()
 signal client_disconnected()

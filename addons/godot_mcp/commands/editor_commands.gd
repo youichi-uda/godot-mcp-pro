@@ -15,6 +15,8 @@ func get_commands() -> Dictionary:
 		"get_signals": _get_signals,
 		"compare_screenshots": _compare_screenshots,
 		"set_auto_dismiss": _set_auto_dismiss,
+		"get_editor_camera": _get_editor_camera,
+		"set_editor_camera": _set_editor_camera,
 	}
 
 
@@ -568,6 +570,68 @@ func _compare_screenshots(params: Dictionary) -> Dictionary:
 		"width": width,
 		"height": height,
 		"diff_image_base64": diff_base64,
+	})
+
+
+func _get_editor_camera(_params: Dictionary) -> Dictionary:
+	var vp3d := EditorInterface.get_editor_viewport_3d()
+	var cam := vp3d.get_camera_3d() if vp3d else null
+	if not cam:
+		return error(-32000, "No 3D editor camera found", {
+			"suggestion": "Make sure a 3D scene is open in the editor",
+		})
+	var pos := cam.global_position
+	var rot := cam.rotation_degrees
+	return success({
+		"position": {"x": pos.x, "y": pos.y, "z": pos.z},
+		"rotation_degrees": {"x": rot.x, "y": rot.y, "z": rot.z},
+		"fov": cam.fov,
+		"near": cam.near,
+		"far": cam.far,
+	})
+
+
+func _set_editor_camera(params: Dictionary) -> Dictionary:
+	var vp3d := EditorInterface.get_editor_viewport_3d()
+	var cam := vp3d.get_camera_3d() if vp3d else null
+	if not cam:
+		return error(-32000, "No 3D editor camera found", {
+			"suggestion": "Make sure a 3D scene is open in the editor",
+		})
+
+	# Set position
+	if params.has("position"):
+		var p: Dictionary = params["position"]
+		cam.global_position = Vector3(
+			float(p.get("x", cam.global_position.x)),
+			float(p.get("y", cam.global_position.y)),
+			float(p.get("z", cam.global_position.z)),
+		)
+
+	# Set rotation
+	if params.has("rotation_degrees"):
+		var r: Dictionary = params["rotation_degrees"]
+		cam.rotation_degrees = Vector3(
+			float(r.get("x", cam.rotation_degrees.x)),
+			float(r.get("y", cam.rotation_degrees.y)),
+			float(r.get("z", cam.rotation_degrees.z)),
+		)
+
+	# Look at target (overrides rotation if set)
+	if params.has("look_at"):
+		var t: Dictionary = params["look_at"]
+		cam.look_at(Vector3(float(t.get("x", 0)), float(t.get("y", 0)), float(t.get("z", 0))))
+
+	# Set FOV
+	if params.has("fov"):
+		cam.fov = float(params["fov"])
+
+	var pos := cam.global_position
+	var rot := cam.rotation_degrees
+	return success({
+		"position": {"x": pos.x, "y": pos.y, "z": pos.z},
+		"rotation_degrees": {"x": rot.x, "y": rot.y, "z": rot.z},
+		"fov": cam.fov,
 	})
 
 
