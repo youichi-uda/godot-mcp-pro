@@ -4,6 +4,16 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.10.1 — 2026-04-08
+
+**UX Improvement** — Bottom panel renamed, INSTALL.md rewritten
+
+### Improved
+- **Bottom panel renamed**: "MCP Server" → "MCP Pro" for consistency with the product name. Status label also updated.
+- **INSTALL.md rewritten**: Added zip structure diagram, clear separation of addon vs server, Claude Desktop config paths, and better troubleshooting. Clarified that `configure` must be run from the Godot project directory.
+
+---
+
 ## v1.10.0 — 2026-04-07
 
 **New Tools & Quality Sweep** — Editor camera control, 169 tools, comprehensive audit fixes
