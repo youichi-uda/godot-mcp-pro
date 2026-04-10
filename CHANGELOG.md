@@ -4,6 +4,15 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.10.2 — 2026-04-11
+
+**Fix** — Linux permission issue for build files
+
+### Fixed
+- **Linux permission denied**: Added `chmod -R a+x` to build process so that `build/index.js` and other compiled files have execute permission out of the box on Linux/macOS. Previously, users had to manually run `chmod -R a+x build` after installation. (Thanks to kflamsted for reporting!)
+
+---
+
 ## v1.10.1 — 2026-04-08
 
 **UX Improvement** — Bottom panel renamed, INSTALL.md rewritten
