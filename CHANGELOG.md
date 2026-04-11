@@ -4,6 +4,19 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.10.3 — 2026-04-11
+
+**Bug Fixes** — Autoload preservation, Windows build, port conflict warning
+
+### Fixed
+- **Autoload deletion on `--import` / shutdown**: Plugin no longer removes pre-existing MCP autoloads from `project.godot`. Previously, `_remove_autoloads()` deleted all managed autoload keys unconditionally — even if they were project-owned. Now only autoloads injected by the current plugin session are removed. (#17)
+- **Windows build failure**: Removed Unix-only `chmod -R a+x build || true` from the `build` script in `package.json`. The `chmod` and `true` commands don't exist on Windows cmd/PowerShell, causing `node build/setup.js install` to fail with "Build failed" even though TypeScript compilation succeeded. The fix is simply `"build": "tsc"` — execute permissions are not needed since the server runs via `node`. (#Discord)
+
+### Improved
+- **Port conflict warning for explicit port**: When `GODOT_MCP_PORT` is set and the port is already occupied (e.g. by a stale process), the server now logs a clear warning with remediation steps instead of silently failing to bind. (#15)
+
+---
+
 ## v1.10.2 — 2026-04-11
 
 **Fix** — Linux permission issue for build files
