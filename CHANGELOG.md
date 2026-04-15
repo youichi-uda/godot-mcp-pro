@@ -4,6 +4,27 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.11.0 — 2026-04-15
+
+**Feature** — New `--3d` mode for 100-tool-limit clients
+
+### Added
+- **`--3d` mode**: Registers exactly 100 tools — the 81 core LITE tools plus Physics (6), AnimationTree (8), and Navigation (5). Designed for clients with a 100-tool cap (e.g. Google Antigravity with Claude Code proxy) that need full 3D game development capabilities. Usage: `node build/index.js --3d`
+
+### Improved
+- **Troubleshooting docs**: Clarified port conflict advice in INSTALL.md — recommends letting the server auto-scan ports 6505–6509 instead of setting a fixed `GODOT_MCP_PORT`, which can cause silent failures with stale processes
+
+### Mode comparison
+
+| Flag | Tools | Use case |
+|------|-------|----------|
+| *(none)* | 169 | Full mode — all tools |
+| `--3d` | 100 | 3D game dev under 100-tool limit |
+| `--lite` | 81 | Tight tool limits (Cursor, etc.) |
+| `--minimal` | 35 | Ultra-tight limits (local LLMs) |
+
+---
+
 ## v1.10.3 — 2026-04-11
 
 **Bug Fixes** — Autoload preservation, Windows build, port conflict warning
