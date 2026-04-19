@@ -80,11 +80,20 @@ func get_game_user_dir() -> String:
 	var err := cfg.load(ProjectSettings.globalize_path("res://project.godot"))
 	if err != OK:
 		return cached_dir
+	# When use_custom_user_dir=true, editor and game share the same dir
+	# (OS.get_user_data_dir() already resolves to the custom path).
+	if cfg.get_value("application", "config/use_custom_user_dir", false):
+		return cached_dir
 	var disk_name = cfg.get_value("application", "config/name", "")
-	if disk_name.is_empty():
+	if typeof(disk_name) != TYPE_STRING or (disk_name as String).is_empty():
+		return cached_dir
+	# Sanitize exactly like Godot does when computing the default user dir
+	# (core/config/project_settings.cpp ProjectSettings::_init).
+	var sanitized := (disk_name as String).xml_unescape().validate_filename().replace(".", "_")
+	if sanitized.is_empty():
 		return cached_dir
 	var base_dir := cached_dir.get_base_dir()
-	var game_dir := base_dir.path_join(str(disk_name))
+	var game_dir := base_dir.path_join(sanitized)
 	# Ensure the directory exists (game may not have created it yet)
 	if not DirAccess.dir_exists_absolute(game_dir):
 		DirAccess.make_dir_recursive_absolute(game_dir)

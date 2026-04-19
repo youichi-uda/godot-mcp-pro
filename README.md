@@ -1,6 +1,6 @@
 # Godot MCP Pro
 
-Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **169 powerful tools**.
+Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **172 powerful tools**.
 
 ## Architecture
 
@@ -121,7 +121,7 @@ The CLI connects directly to the Godot editor plugin via WebSocket. It requires:
 
 Open your Godot project with the plugin enabled, then use Claude Code to interact with the editor.
 
-## All 169 Tools
+## All 172 Tools
 
 ### Project Tools (7)
 | Tool | Description |
@@ -426,7 +426,8 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | Asset/AI | 0 | 0 | 1 | 6 | 0 | 0 | 0 |
 | Material | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | Other | 0 | 0 | 9 | 5 | 5 | 2 | 1 |
-| **Total** | **169** | ~30 | **32** | **39** | **13** | **19** | **10** |
+| Android Deploy | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
+| **Total** | **172** | ~30 | **32** | **39** | **13** | **19** | **10** |
 
 ### Feature Matrix
 

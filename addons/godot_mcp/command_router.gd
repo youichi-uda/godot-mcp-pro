@@ -40,6 +40,7 @@ func _register_commands() -> void:
 		preload("res://addons/godot_mcp/commands/navigation_commands.gd"),
 		preload("res://addons/godot_mcp/commands/particle_commands.gd"),
 		preload("res://addons/godot_mcp/commands/test_commands.gd"),
+		preload("res://addons/godot_mcp/commands/android_commands.gd"),
 	]
 
 	for cmd_class in command_classes:

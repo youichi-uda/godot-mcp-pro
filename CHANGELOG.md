@@ -4,6 +4,22 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.12.0 — 2026-04-19
+
+**Feature** — Android Remote Deploy · **Bug Fix** — Runtime IPC on custom user dirs
+
+### Added
+- **Android Remote Deploy** (3 tools, Full mode only — #20):
+  - `list_android_devices` — wraps `adb devices -l`, returns serial/state/model/product. Resolves adb from Editor Settings > Export > Android > Adb, falling back to `adb` on PATH.
+  - `get_android_preset_info` — reads metadata (package name, export path, runnable) from an Android preset in `export_presets.cfg`.
+  - `deploy_to_android` — one-shot pipeline: Godot CLI export → `adb install -r` → `adb shell monkey` launch. Options: `preset_name`, `device_serial`, `debug`, `launch`, `skip_export`. Synchronous; export step can take tens of seconds.
+- Full mode tool count: **169 → 172**. LITE / 3D / MINIMAL modes are unchanged.
+
+### Fixed
+- **`get_game_user_dir()`** (`commands/base_command.gd`) — #21: Runtime IPC commands (`get_game_scene_tree`, `get_game_node_properties`, `simulate_*`, etc.) failed with `Could not create game request file` when the project used `application/config/use_custom_user_dir=true`, or when `application/config/name` contained characters illegal on the host OS (e.g. `:` on Windows). Editor and game now resolve to the same dir: early-return `OS.get_user_data_dir()` for custom user dirs, and sanitize `config/name` via `xml_unescape().validate_filename().replace(".", "_")` — matching Godot's own logic in `ProjectSettings::_init`. Thanks @asim9834 for the detailed repro + patch.
+
+---
+
 ## v1.11.0 — 2026-04-15
 
 **Feature** — New `--3d` mode for 100-tool-limit clients
