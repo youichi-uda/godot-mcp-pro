@@ -12,6 +12,15 @@ AI Assistant ←—stdio/MCP—→ Node.js Server ←—WebSocket:6505—→ God
 - **Editor Integration**: Full access to Godot's editor API, UndoRedo system, and scene tree
 - **JSON-RPC 2.0**: Standard protocol with proper error codes and suggestions
 
+## What's in this repo
+
+> ⚠️ **This public repo only contains the free Godot addon/plugin.** The MCP server (Node.js, required to connect AI assistants) is distributed as part of the paid package — **one-time purchase**, lifetime updates:
+>
+> - **Buy Me a Coffee**: <https://buymeacoffee.com/y1uda/extras>
+> - **itch.io**: <https://y1uda.itch.io/godot-mcp-pro>
+>
+> The paid zip includes the addon, the `server/` directory with pre-built JavaScript, `INSTALL.md`, and AI-client instructions. If you cloned this repo and don't see a `server/` folder, **that's expected** — grab the full package from one of the links above.
+
 ## Quick Start
 
 ### 1. Install the Godot Plugin
@@ -21,6 +30,8 @@ Copy the `addons/godot_mcp/` folder into your Godot project's `addons/` director
 Enable the plugin: **Project → Project Settings → Plugins → Godot MCP Pro → Enable**
 
 ### 2. Install the MCP Server
+
+> The `server/` directory is only included in the **full paid package** (see above). After downloading and extracting the zip, run:
 
 ```bash
 cd server
@@ -48,12 +59,13 @@ Add to your `.mcp.json`:
 
 ### 4. Choose Your Mode
 
-Godot MCP Pro offers three modes to fit any client's tool limit:
+Godot MCP Pro offers four modes to fit any client's tool limit:
 
 | Mode | Tools | Best For |
 |------|-------|----------|
-| **Full** (default) | 167 | Claude Code, Cline, VS Code Copilot, Cursor |
-| **Lite** (`--lite`) | 80 | Windsurf (100 limit), JetBrains Junie (100 limit), Gemini CLI |
+| **Full** (default) | 172 | Claude Code, Cline, VS Code Copilot, Cursor |
+| **3D** (`--3d`) | 100 | Antigravity and other 100-tool-limit clients needing 3D |
+| **Lite** (`--lite`) | 81 | Windsurf, JetBrains Junie, Gemini CLI |
 | **Minimal** (`--minimal`) | 35 | OpenCode, local LLMs with small context |
 
 ```json
