@@ -79,6 +79,7 @@ func _simulate_mouse_move(params: Dictionary) -> Dictionary:
 	var rel_x: float = float(params.get("relative_x", 0))
 	var rel_y: float = float(params.get("relative_y", 0))
 	var button_mask: int = optional_int(params, "button_mask", 0)
+	var unhandled_explicit: bool = params.has("unhandled")
 	var unhandled: bool = optional_bool(params, "unhandled", false)
 
 	var event := {
@@ -87,8 +88,13 @@ func _simulate_mouse_move(params: Dictionary) -> Dictionary:
 		"relative": {"x": rel_x, "y": rel_y},
 		"button_mask": button_mask,
 	}
-	# When button_mask > 0 (drag), auto-enable unhandled to bypass GUI consumption
-	if unhandled or button_mask > 0:
+	# Auto-enable unhandled for drag motions (camera-pan use case) ONLY when
+	# the caller did NOT explicitly pass an "unhandled" key. If they passed
+	# one — true or false — honor it. This lets UI drag-and-drop tests opt
+	# back into normal GUI dispatch by passing unhandled: false explicitly.
+	if unhandled_explicit:
+		event["unhandled"] = unhandled
+	elif button_mask > 0:
 		event["unhandled"] = true
 	_write_commands([event])
 	return success({"sent": true, "event": event})
