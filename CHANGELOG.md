@@ -4,6 +4,24 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.13.0 — 2026-05-05
+
+**Bug Fixes & Polish** — Mouse motion dispatch, setup config, site pricing
+
+### Fixed
+- **`simulate_mouse_move` honors explicit `unhandled: false`** (#24, #25): Drag motions (`button_mask > 0`) auto-promote to `push_input` so camera-pan use cases bypass GUI consumption. But callers writing UI drag-and-drop tests need events to reach the GUI dispatcher (so `_get_drag_data` / `_drop_data` fire). Now: if the caller explicitly passes `unhandled: false`, that wins; auto-promotion only happens when `unhandled` was omitted. Default behavior preserved.
+- **v1.12.0 build blocker**: Restored missing `mcp/server/src/utils/load-instructions.ts` referenced by `index.ts` since v1.12.0. Fresh clones of v1.12.0 failed `npm run build` with `Cannot find module './utils/load-instructions.js'`. v1.13.0 now builds clean.
+
+### Changed
+- **`setup` no longer pins `GODOT_MCP_PORT`** (#27): Generated MCP client config (Claude Desktop, Cursor, etc.) omits the `GODOT_MCP_PORT` env var so the server can auto-scan ports `6505–6509`. Pinning a fixed port caused silent failures when a stale process held the port. Users who need a fixed port can still set it manually.
+- **Site JSON-LD price → $15** (#26): Structured data on the landing page now reflects the current price.
+
+### Improved
+- **README clarity** (issue #7 follow-up): More prominent note that the public repo ships the addon only — the MCP server is distributed via Buy Me a Coffee / itch.io.
+- **`build-release.sh` portability**: Falls back to system `zip` and `python3` when 7-Zip is not on PATH.
+
+---
+
 ## v1.12.0 — 2026-04-19
 
 **Feature** — Android Remote Deploy · **Bug Fix** — Runtime IPC on custom user dirs
