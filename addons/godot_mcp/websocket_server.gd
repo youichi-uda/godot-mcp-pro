@@ -18,12 +18,17 @@ const BASE_PORT := 6505
 const MAX_PORT := 6514
 const RECONNECT_INTERVAL := 3.0
 const BUFFER_SIZE := 16 * 1024 * 1024  # 16MB
+const PING_INTERVAL := 5.0  # send ping every N seconds while connected
+const INACTIVITY_TIMEOUT := 30.0  # force-close if no message received for N seconds
 
 # Per-port connection state
 var _peers: Dictionary = {}  # port -> WebSocketPeer
 var _connected: Dictionary = {}  # port -> bool
 var _timers: Dictionary = {}  # port -> float (reconnect countdown)
 var _connect_times: Dictionary = {}  # port -> float (elapsed seconds since connect)
+var _last_activity: Dictionary = {}  # port -> float (seconds since last received message)
+var _ping_timers: Dictionary = {}  # port -> float (seconds since last sent ping)
+var _stale_ports: Dictionary = {}  # port -> bool (heartbeat timeout flag, exposed to UI)
 var _running: bool = false
 
 
@@ -45,6 +50,9 @@ func stop_server() -> void:
 	_peers.clear()
 	_connected.clear()
 	_timers.clear()
+	_last_activity.clear()
+	_ping_timers.clear()
+	_stale_ports.clear()
 	print("[MCP] WebSocket client stopped")
 
 
@@ -66,6 +74,14 @@ func get_connected_ports() -> Array[int]:
 
 func get_port_connect_time(port: int) -> float:
 	return _connect_times.get(port, -1.0)
+
+
+func get_port_idle_time(port: int) -> float:
+	return _last_activity.get(port, -1.0)
+
+
+func is_port_stale(port: int) -> bool:
+	return _stale_ports.get(port, false)
 
 
 func _try_connect(p: int) -> void:
@@ -102,16 +118,48 @@ func _process(delta: float) -> void:
 				if not _connected.get(p, false):
 					_connected[p] = true
 					_connect_times[p] = 0.0
+					_last_activity[p] = 0.0
+					_ping_timers[p] = 0.0
+					_stale_ports[p] = false
 					_timers[p] = 0.0
 					print_verbose("[MCP] Connected on port %d" % p)
 					client_connected.emit()
 				else:
 					_connect_times[p] = _connect_times.get(p, 0.0) + delta
+					_last_activity[p] = _last_activity.get(p, 0.0) + delta
+					_ping_timers[p] = _ping_timers.get(p, 0.0) + delta
 
+				var received_any := false
 				while ws.get_available_packet_count() > 0:
 					var packet := ws.get_packet()
 					var text := packet.get_string_from_utf8()
+					received_any = true
 					_dispatch_message(text, p)
+
+				if received_any:
+					_last_activity[p] = 0.0
+					if _stale_ports.get(p, false):
+						_stale_ports[p] = false
+						print("[MCP] Port %d recovered from stale state" % p)
+
+				# Force-close if no message received for INACTIVITY_TIMEOUT.
+				# The MCP server pings every 10s, so 30s of silence means the
+				# connection is half-open and reconnect is the only way out.
+				if _last_activity.get(p, 0.0) > INACTIVITY_TIMEOUT:
+					push_warning("[MCP] Port %d silent for %.1fs — forcing reconnect" % [p, _last_activity[p]])
+					_stale_ports[p] = true
+					ws.close(4000, "Heartbeat timeout")
+					_connected[p] = false
+					_peers[p] = null
+					_timers[p] = 0.0
+					client_disconnected.emit()
+					continue
+
+				# Send periodic ping so the server can detect our death too,
+				# and so any reply resets our own inactivity timer.
+				if _ping_timers.get(p, 0.0) >= PING_INTERVAL:
+					_ping_timers[p] = 0.0
+					ws.send_text(JSON.stringify({"jsonrpc": "2.0", "method": "ping", "params": {}}))
 
 			WebSocketPeer.STATE_CLOSING:
 				pass
@@ -123,6 +171,8 @@ func _process(delta: float) -> void:
 					client_disconnected.emit()
 				_peers[p] = null
 				_timers[p] = 0.0
+				_last_activity[p] = 0.0
+				_ping_timers[p] = 0.0
 
 			WebSocketPeer.STATE_CONNECTING:
 				pass
