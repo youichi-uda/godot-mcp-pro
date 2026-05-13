@@ -4,6 +4,20 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.13.2 — 2026-05-13
+
+**Bug Fix** — Port allocation race when multiple Claude Code sessions start at the same time
+
+### Fixed
+- **Parallel-session port collision** (Discord report by CrusherEAGLE): Two Claude Code sessions starting nearly simultaneously could both pre-check port 6505 as free, both attempt to bind, the loser would get `EADDRINUSE` and give up without retrying the next port. The session that lost the race had a server that never started, so every tool call failed for the remainder of that session with no way to recover short of restart. The fallback path in `index.ts` claimed it would "retry on first command" but no such retry existed.
+- The fix replaces the racy pre-check + single bind with a proper bind-retry loop: each port in `6505–6509` is tried in turn, and `EADDRINUSE` triggers a fall-through to the next port. Only when the entire range is exhausted does `connect()` reject, with a clear error message and remediation hint.
+- Cleaned up the misleading "will retry on first command" log line in `index.ts`.
+
+### Tests
+- New `tests/godot-connection.test.ts` covers: first-port allocation, sequential fall-through, **simultaneous parallel connects** (the exact regression scenario), range exhaustion, and `fixedPort=true` fail-fast behavior. 5 new tests, 62 total.
+
+---
+
 ## v1.13.1 — 2026-05-12
 
 **Bug Fix** — Silent disconnect / dead-connection recovery
