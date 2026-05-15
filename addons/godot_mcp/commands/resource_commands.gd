@@ -61,6 +61,10 @@ func _edit_resource(params: Dictionary) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return error_not_found("Resource '%s'" % path)
 
+	var guard := guard_offline_scene_save(path)
+	if not guard.is_empty():
+		return guard
+
 	var resource: Resource = ResourceLoader.load(path)
 	if resource == null:
 		return error_internal("Failed to load resource: %s" % path)
