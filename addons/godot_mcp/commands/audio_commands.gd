@@ -316,6 +316,9 @@ func _add_audio_player(params: Dictionary) -> Dictionary:
 	var parent := find_node_by_path(node_path)
 	if parent == null:
 		return error_not_found("Node at '%s'" % node_path)
+	var root := get_edited_root()
+	if root == null:
+		return error_no_scene()
 
 	var player: Node = null
 	match player_type:
@@ -369,8 +372,7 @@ func _add_audio_player(params: Dictionary) -> Dictionary:
 		if params.has("unit_size"):
 			(player as AudioStreamPlayer3D).unit_size = float(params["unit_size"])
 
-	parent.add_child(player)
-	player.owner = get_edited_root()
+	add_child_with_undo(parent, player, root, "MCP: Add audio player")
 
 	return success({
 		"name": player_name,

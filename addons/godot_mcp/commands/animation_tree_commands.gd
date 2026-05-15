@@ -93,8 +93,7 @@ func _create_animation_tree(params: Dictionary) -> Dictionary:
 	if not anim_player_path.is_empty():
 		tree.anim_player = NodePath(anim_player_path)
 
-	parent.add_child(tree, true)
-	tree.owner = root
+	add_child_with_undo(parent, tree, root, "MCP: Create AnimationTree")
 
 	return success({
 		"name": tree.name,
@@ -281,7 +280,12 @@ func _add_state_machine_state(params: Dictionary) -> Dictionary:
 		_:
 			return error_invalid_params("Unknown state_type: '%s'. Use 'animation', 'blend_tree', or 'state_machine'" % state_type)
 
-	sm.add_node(StringName(state_name), node, position)
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Add state machine state")
+	undo_redo.add_do_method(sm, "add_node", StringName(state_name), node, position)
+	undo_redo.add_do_reference(node)
+	undo_redo.add_undo_method(sm, "remove_node", StringName(state_name))
+	undo_redo.commit_action()
 
 	return success({
 		"state_name": state_name,
@@ -315,7 +319,14 @@ func _remove_state_machine_state(params: Dictionary) -> Dictionary:
 	if not sm.has_node(StringName(state_name)):
 		return error_not_found("State '%s'" % state_name)
 
-	sm.remove_node(StringName(state_name))
+	var old_node := sm.get_node(StringName(state_name))
+	var old_position := sm.get_node_position(StringName(state_name))
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Remove state machine state")
+	undo_redo.add_do_method(sm, "remove_node", StringName(state_name))
+	undo_redo.add_undo_method(sm, "add_node", StringName(state_name), old_node, old_position)
+	undo_redo.add_undo_reference(old_node)
+	undo_redo.commit_action()
 
 	return success({"state_name": state_name, "removed": true})
 
@@ -379,7 +390,12 @@ func _add_state_machine_transition(params: Dictionary) -> Dictionary:
 	if params.has("xfade_time"):
 		transition.xfade_time = float(params["xfade_time"])
 
-	sm.add_transition(StringName(from_state), StringName(to_state), transition)
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Add state machine transition")
+	undo_redo.add_do_method(sm, "add_transition", StringName(from_state), StringName(to_state), transition)
+	undo_redo.add_do_reference(transition)
+	undo_redo.add_undo_method(sm, "remove_transition", StringName(from_state), StringName(to_state))
+	undo_redo.commit_action()
 
 	return success({
 		"from": from_state,
@@ -427,7 +443,18 @@ func _remove_state_machine_transition(params: Dictionary) -> Dictionary:
 	if not found:
 		return error_not_found("Transition from '%s' to '%s'" % [from_state, to_state])
 
-	sm.remove_transition(StringName(from_state), StringName(to_state))
+	var transition: AnimationNodeStateMachineTransition = null
+	for i in sm.get_transition_count():
+		if str(sm.get_transition_from(i)) == from_state and str(sm.get_transition_to(i)) == to_state:
+			transition = sm.get_transition(i)
+			break
+
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Remove state machine transition")
+	undo_redo.add_do_method(sm, "remove_transition", StringName(from_state), StringName(to_state))
+	undo_redo.add_undo_method(sm, "add_transition", StringName(from_state), StringName(to_state), transition)
+	undo_redo.add_undo_reference(transition)
+	undo_redo.commit_action()
 
 	return success({"from": from_state, "to": to_state, "removed": true})
 
@@ -467,9 +494,9 @@ func _set_blend_tree_node(params: Dictionary) -> Dictionary:
 	var position_y: float = float(params.get("position_y", 0.0))
 	var position := Vector2(position_x, position_y)
 
-	# Remove existing node if replacing
-	if bt.has_node(StringName(bt_node_name)):
-		bt.remove_node(StringName(bt_node_name))
+	var had_old_node := bt.has_node(StringName(bt_node_name))
+	var old_node: AnimationNode = bt.get_node(StringName(bt_node_name)) if had_old_node else null
+	var old_position := bt.get_node_position(StringName(bt_node_name)) if had_old_node else Vector2.ZERO
 
 	var node: AnimationNode
 	match bt_node_type:
@@ -500,13 +527,22 @@ func _set_blend_tree_node(params: Dictionary) -> Dictionary:
 		_:
 			return error_invalid_params("Unknown bt_node_type: '%s'. Use: Animation, Add2, Blend2, Add3, Blend3, TimeScale, TimeSeek, Transition, OneShot, Sub2" % bt_node_type)
 
-	bt.add_node(StringName(bt_node_name), node, position)
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Set blend tree node")
+	if had_old_node:
+		undo_redo.add_do_method(bt, "remove_node", StringName(bt_node_name))
+		undo_redo.add_undo_method(bt, "add_node", StringName(bt_node_name), old_node, old_position)
+		undo_redo.add_undo_reference(old_node)
+	undo_redo.add_do_method(bt, "add_node", StringName(bt_node_name), node, position)
+	undo_redo.add_do_reference(node)
+	undo_redo.add_undo_method(bt, "remove_node", StringName(bt_node_name))
 
 	# Connect to another node if specified
 	var connect_to: String = optional_string(params, "connect_to", "")
 	var connect_port: int = optional_int(params, "connect_port", 0)
 	if not connect_to.is_empty():
-		bt.connect_node(StringName(connect_to), connect_port, StringName(bt_node_name))
+		undo_redo.add_do_method(bt, "connect_node", StringName(connect_to), connect_port, StringName(bt_node_name))
+	undo_redo.commit_action()
 
 	return success({
 		"blend_tree_state": bt_state,
@@ -551,7 +587,7 @@ func _set_tree_parameter(params: Dictionary) -> Dictionary:
 			if parsed != null:
 				value = parsed
 
-	tree.set(parameter, value)
+	set_property_with_undo(tree, parameter, value, "MCP: Set AnimationTree parameter")
 
 	# Read back to confirm
 	var actual = tree.get(parameter)

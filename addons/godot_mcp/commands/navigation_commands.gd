@@ -37,6 +37,9 @@ func _setup_navigation_region(params: Dictionary) -> Dictionary:
 	var node := find_node_by_path(node_path)
 	if node == null:
 		return error_not_found("Node at '%s'" % node_path)
+	var root := get_edited_root()
+	if root == null:
+		return error_no_scene()
 
 	var force_mode: String = optional_string(params, "mode", "auto")
 	var is_3d: bool
@@ -61,8 +64,7 @@ func _setup_navigation_region(params: Dictionary) -> Dictionary:
 		if params.has("navigation_layers"):
 			region.navigation_layers = int(params["navigation_layers"])
 
-		node.add_child(region, true)
-		region.owner = get_edited_root()
+		add_child_with_undo(node, region, root, "MCP: Add NavigationRegion3D")
 
 		return success({
 			"node_path": str(region.get_path()),
@@ -97,8 +99,7 @@ func _setup_navigation_region(params: Dictionary) -> Dictionary:
 		if params.has("navigation_layers"):
 			region.navigation_layers = int(params["navigation_layers"])
 
-		node.add_child(region, true)
-		region.owner = get_edited_root()
+		add_child_with_undo(node, region, root, "MCP: Add NavigationRegion2D")
 
 		return success({
 			"node_path": str(region.get_path()),
@@ -117,12 +118,16 @@ func _bake_navigation_mesh(params: Dictionary) -> Dictionary:
 	var node := find_node_by_path(node_path)
 	if node == null:
 		return error_not_found("Node at '%s'" % node_path)
+	var root := get_edited_root()
+	if root == null:
+		return error_no_scene()
 
 	if node is NavigationRegion3D:
 		var region: NavigationRegion3D = node as NavigationRegion3D
 		if region.navigation_mesh == null:
 			return error_invalid_params("NavigationRegion3D has no NavigationMesh resource")
 		region.bake_navigation_mesh()
+		mark_current_scene_unsaved()
 		return success({
 			"node_path": node_path,
 			"type": "NavigationRegion3D",
@@ -151,6 +156,7 @@ func _bake_navigation_mesh(params: Dictionary) -> Dictionary:
 					region.navigation_polygon.remove_outline(0)
 				region.navigation_polygon.add_outline(outline)
 				region.navigation_polygon.make_polygons_from_outlines()
+				mark_current_scene_unsaved()
 				return success({
 					"node_path": node_path,
 					"type": "NavigationRegion2D",
@@ -162,6 +168,7 @@ func _bake_navigation_mesh(params: Dictionary) -> Dictionary:
 		else:
 			# Try baking from source geometry
 			region.bake_navigation_polygon()
+			mark_current_scene_unsaved()
 			return success({
 				"node_path": node_path,
 				"type": "NavigationRegion2D",
@@ -180,6 +187,9 @@ func _setup_navigation_agent(params: Dictionary) -> Dictionary:
 	var node := find_node_by_path(node_path)
 	if node == null:
 		return error_not_found("Node at '%s'" % node_path)
+	var root := get_edited_root()
+	if root == null:
+		return error_no_scene()
 
 	var force_mode: String = optional_string(params, "mode", "auto")
 	var is_3d: bool
@@ -211,8 +221,7 @@ func _setup_navigation_agent(params: Dictionary) -> Dictionary:
 		if params.has("navigation_layers"):
 			agent.navigation_layers = int(params["navigation_layers"])
 
-		node.add_child(agent, true)
-		agent.owner = get_edited_root()
+		add_child_with_undo(node, agent, root, "MCP: Add NavigationAgent3D")
 
 		return success({
 			"node_path": str(agent.get_path()),
@@ -244,8 +253,7 @@ func _setup_navigation_agent(params: Dictionary) -> Dictionary:
 		if params.has("navigation_layers"):
 			agent.navigation_layers = int(params["navigation_layers"])
 
-		node.add_child(agent, true)
-		agent.owner = get_edited_root()
+		add_child_with_undo(node, agent, root, "MCP: Add NavigationAgent2D")
 
 		return success({
 			"node_path": str(agent.get_path()),
@@ -272,13 +280,13 @@ func _set_navigation_layers(params: Dictionary) -> Dictionary:
 	if params.has("layers"):
 		var layers_val: int = int(params["layers"])
 		if node is NavigationRegion2D:
-			(node as NavigationRegion2D).navigation_layers = layers_val
+			set_property_with_undo(node, "navigation_layers", layers_val, "MCP: Set navigation layers")
 		elif node is NavigationRegion3D:
-			(node as NavigationRegion3D).navigation_layers = layers_val
+			set_property_with_undo(node, "navigation_layers", layers_val, "MCP: Set navigation layers")
 		elif node is NavigationAgent2D:
-			(node as NavigationAgent2D).navigation_layers = layers_val
+			set_property_with_undo(node, "navigation_layers", layers_val, "MCP: Set navigation layers")
 		elif node is NavigationAgent3D:
-			(node as NavigationAgent3D).navigation_layers = layers_val
+			set_property_with_undo(node, "navigation_layers", layers_val, "MCP: Set navigation layers")
 		else:
 			return error_invalid_params("Node '%s' is not a navigation region or agent" % node_path)
 
@@ -300,13 +308,13 @@ func _set_navigation_layers(params: Dictionary) -> Dictionary:
 				current_layers |= (1 << (layer_num - 1))
 
 		if node is NavigationRegion2D:
-			(node as NavigationRegion2D).navigation_layers = current_layers
+			set_property_with_undo(node, "navigation_layers", current_layers, "MCP: Set navigation layers")
 		elif node is NavigationRegion3D:
-			(node as NavigationRegion3D).navigation_layers = current_layers
+			set_property_with_undo(node, "navigation_layers", current_layers, "MCP: Set navigation layers")
 		elif node is NavigationAgent2D:
-			(node as NavigationAgent2D).navigation_layers = current_layers
+			set_property_with_undo(node, "navigation_layers", current_layers, "MCP: Set navigation layers")
 		elif node is NavigationAgent3D:
-			(node as NavigationAgent3D).navigation_layers = current_layers
+			set_property_with_undo(node, "navigation_layers", current_layers, "MCP: Set navigation layers")
 		else:
 			return error_invalid_params("Node '%s' is not a navigation region or agent" % node_path)
 
@@ -332,13 +340,13 @@ func _set_navigation_layers(params: Dictionary) -> Dictionary:
 					current_layers |= (1 << (i - 1))
 
 		if node is NavigationRegion2D:
-			(node as NavigationRegion2D).navigation_layers = current_layers
+			set_property_with_undo(node, "navigation_layers", current_layers, "MCP: Set navigation layers")
 		elif node is NavigationRegion3D:
-			(node as NavigationRegion3D).navigation_layers = current_layers
+			set_property_with_undo(node, "navigation_layers", current_layers, "MCP: Set navigation layers")
 		elif node is NavigationAgent2D:
-			(node as NavigationAgent2D).navigation_layers = current_layers
+			set_property_with_undo(node, "navigation_layers", current_layers, "MCP: Set navigation layers")
 		elif node is NavigationAgent3D:
-			(node as NavigationAgent3D).navigation_layers = current_layers
+			set_property_with_undo(node, "navigation_layers", current_layers, "MCP: Set navigation layers")
 		else:
 			return error_invalid_params("Node '%s' is not a navigation region or agent" % node_path)
 

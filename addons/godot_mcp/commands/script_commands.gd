@@ -96,6 +96,11 @@ func _create_script(params: Dictionary) -> Dictionary:
 	var content: String = optional_string(params, "content", "")
 	var base_class: String = optional_string(params, "extends", "Node")
 	var class_name_str: String = optional_string(params, "class_name", "")
+	var force: bool = optional_bool(params, "force", false)
+
+	var guard := guard_text_resource_write(path, force)
+	if not guard.is_empty():
+		return guard
 
 	# Generate template if no content provided
 	if content.is_empty():
@@ -141,6 +146,11 @@ func _edit_script(params: Dictionary) -> Dictionary:
 
 	if not FileAccess.file_exists(path):
 		return error_not_found("Script '%s'" % path)
+
+	var force: bool = optional_bool(params, "force", false)
+	var guard := guard_text_resource_write(path, force)
+	if not guard.is_empty():
+		return guard
 
 	# Read current content
 	var file := FileAccess.open(path, FileAccess.READ)

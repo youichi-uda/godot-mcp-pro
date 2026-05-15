@@ -54,6 +54,10 @@ func _create_scene(params: Dictionary) -> Dictionary:
 		return result[1]
 	var path: String = result[0]
 
+	var guard := guard_offline_scene_save(path)
+	if not guard.is_empty():
+		return guard
+
 	var root_type: String = optional_string(params, "root_type", "Node2D")
 	var root_name: String = optional_string(params, "root_name", "")
 
@@ -214,16 +218,35 @@ func _save_scene(params: Dictionary) -> Dictionary:
 	if path.is_empty():
 		return error_invalid_params("No save path specified and scene has no existing path")
 
-	var scene := PackedScene.new()
-	var err := scene.pack(root)
-	if err != OK:
-		return error_internal("Failed to pack scene: %s" % error_string(err))
+	var normalized_path := normalize_project_path(path)
+	if is_scene_path_open(normalized_path) and not is_active_scene_path(normalized_path):
+		return error_conflict(
+			"Refusing to save inactive open scene '%s' from the active editor scene" % normalized_path,
+			{
+				"path": normalized_path,
+				"active_scene": normalize_project_path(root.scene_file_path),
+				"open_scenes": get_open_scene_paths(),
+				"suggestion": "Open the target scene tab before saving it, or close it before offline edits.",
+			}
+		)
 
-	err = ResourceSaver.save(scene, path)
-	if err != OK:
-		return error_internal("Failed to save scene: %s" % error_string(err))
+	var dir_path := normalized_path.get_base_dir()
+	if not DirAccess.dir_exists_absolute(dir_path):
+		DirAccess.make_dir_recursive_absolute(dir_path)
 
-	return success({"path": path, "saved": true})
+	var err: int
+	var save_method: String
+	if root.scene_file_path.is_empty() or normalize_project_path(root.scene_file_path) != normalized_path:
+		get_editor().save_scene_as(normalized_path)
+		err = OK
+		save_method = "EditorInterface.save_scene_as"
+	else:
+		err = get_editor().save_scene()
+		save_method = "EditorInterface.save_scene"
+	if err != OK:
+		return error_internal("Failed to save scene via %s: %s" % [save_method, error_string(err)])
+
+	return success({"path": normalized_path, "saved": true, "method": save_method})
 
 
 func _get_scene_exports(params: Dictionary) -> Dictionary:

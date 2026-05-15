@@ -21,6 +21,11 @@ func _create_shader(params: Dictionary) -> Dictionary:
 
 	var content: String = optional_string(params, "content", "")
 	var shader_type: String = optional_string(params, "shader_type", "spatial")
+	var force: bool = optional_bool(params, "force", false)
+
+	var guard := guard_text_resource_write(path, force)
+	if not guard.is_empty():
+		return guard
 
 	if content.is_empty():
 		match shader_type:
@@ -77,6 +82,11 @@ func _edit_shader(params: Dictionary) -> Dictionary:
 
 	if not FileAccess.file_exists(path):
 		return error_not_found("Shader '%s'" % path)
+
+	var force: bool = optional_bool(params, "force", false)
+	var guard := guard_text_resource_write(path, force)
+	if not guard.is_empty():
+		return guard
 
 	var changes_made := 0
 
@@ -146,13 +156,13 @@ func _assign_shader_material(params: Dictionary) -> Dictionary:
 	material.shader = shader
 
 	if node is CanvasItem:
-		(node as CanvasItem).material = material
+		set_property_with_undo(node, "material", material, "MCP: Assign shader material")
 	elif node is MeshInstance3D:
-		(node as MeshInstance3D).material_override = material
+		set_property_with_undo(node, "material_override", material, "MCP: Assign shader material")
 	else:
 		# Try generic material property
 		if "material" in node:
-			node.set("material", material)
+			set_property_with_undo(node, "material", material, "MCP: Assign shader material")
 		else:
 			return error_invalid_params("Node '%s' (%s) does not support materials" % [node_path, node.get_class()])
 

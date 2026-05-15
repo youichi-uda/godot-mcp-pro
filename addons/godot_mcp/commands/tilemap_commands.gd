@@ -37,7 +37,15 @@ func _tilemap_set_cell(params: Dictionary) -> Dictionary:
 	var atlas_y: int = int(params.get("atlas_y", 0))
 	var alternative: int = int(params.get("alternative", 0))
 
-	tilemap.set_cell(Vector2i(x, y), source_id, Vector2i(atlas_x, atlas_y), alternative)
+	var coords := Vector2i(x, y)
+	var old_cells := [_capture_cell(tilemap, coords)]
+	var new_cells := [_make_cell(coords, source_id, Vector2i(atlas_x, atlas_y), alternative)]
+
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Set TileMap cell")
+	undo_redo.add_do_method(self, "_apply_cells", tilemap, new_cells)
+	undo_redo.add_undo_method(self, "_apply_cells", tilemap, old_cells)
+	undo_redo.commit_action()
 
 	return success({"x": x, "y": y, "source_id": source_id, "atlas_coords": [atlas_x, atlas_y]})
 
@@ -62,10 +70,20 @@ func _tilemap_fill_rect(params: Dictionary) -> Dictionary:
 	var alternative: int = int(params.get("alternative", 0))
 
 	var count := 0
+	var old_cells: Array = []
+	var new_cells: Array = []
 	for cx in range(mini(x1, x2), maxi(x1, x2) + 1):
 		for cy in range(mini(y1, y2), maxi(y1, y2) + 1):
-			tilemap.set_cell(Vector2i(cx, cy), source_id, Vector2i(atlas_x, atlas_y), alternative)
+			var coords := Vector2i(cx, cy)
+			old_cells.append(_capture_cell(tilemap, coords))
+			new_cells.append(_make_cell(coords, source_id, Vector2i(atlas_x, atlas_y), alternative))
 			count += 1
+
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Fill TileMap rect")
+	undo_redo.add_do_method(self, "_apply_cells", tilemap, new_cells)
+	undo_redo.add_undo_method(self, "_apply_cells", tilemap, old_cells)
+	undo_redo.commit_action()
 
 	return success({"filled": count, "rect": [x1, y1, x2, y2]})
 
@@ -107,8 +125,39 @@ func _tilemap_clear(params: Dictionary) -> Dictionary:
 	if tilemap == null:
 		return error_not_found("TileMapLayer at '%s'" % node_path)
 
-	tilemap.clear()
+	var old_cells: Array = []
+	for coords: Vector2i in tilemap.get_used_cells():
+		old_cells.append(_capture_cell(tilemap, coords))
+
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Clear TileMap")
+	undo_redo.add_do_method(tilemap, "clear")
+	undo_redo.add_undo_method(self, "_apply_cells", tilemap, old_cells)
+	undo_redo.commit_action()
 	return success({"cleared": true})
+
+
+func _make_cell(coords: Vector2i, source_id: int, atlas_coords: Vector2i, alternative: int) -> Dictionary:
+	return {
+		"coords": coords,
+		"source_id": source_id,
+		"atlas_coords": atlas_coords,
+		"alternative": alternative,
+	}
+
+
+func _capture_cell(tilemap: TileMapLayer, coords: Vector2i) -> Dictionary:
+	return _make_cell(
+		coords,
+		tilemap.get_cell_source_id(coords),
+		tilemap.get_cell_atlas_coords(coords),
+		tilemap.get_cell_alternative_tile(coords)
+	)
+
+
+func _apply_cells(tilemap: TileMapLayer, cells: Array) -> void:
+	for cell: Dictionary in cells:
+		tilemap.set_cell(cell["coords"], cell["source_id"], cell["atlas_coords"], cell["alternative"])
 
 
 func _tilemap_get_info(params: Dictionary) -> Dictionary:

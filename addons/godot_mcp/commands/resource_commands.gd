@@ -22,6 +22,10 @@ func _read_resource(params: Dictionary) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return error_not_found("Resource '%s'" % path)
 
+	var guard := guard_offline_scene_save(path)
+	if not guard.is_empty():
+		return guard
+
 	var resource: Resource = ResourceLoader.load(path)
 	if resource == null:
 		return error_internal("Failed to load resource: %s" % path)
@@ -107,6 +111,10 @@ func _create_resource(params: Dictionary) -> Dictionary:
 	var overwrite: bool = optional_bool(params, "overwrite", false)
 	if FileAccess.file_exists(path) and not overwrite:
 		return error(-32000, "Resource already exists: %s" % path, {"suggestion": "Set overwrite=true to replace"})
+
+	var guard := guard_offline_scene_save(path)
+	if not guard.is_empty():
+		return guard
 
 	var resource: Resource = ClassDB.instantiate(resource_type)
 	if resource == null:
