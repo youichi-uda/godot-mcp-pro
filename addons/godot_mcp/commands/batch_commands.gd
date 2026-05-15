@@ -327,7 +327,7 @@ func _cross_scene_set_property(params: Dictionary) -> Dictionary:
 		if not changes.is_empty():
 			if not dry_run:
 				var guard := guard_offline_scene_save(normalized_scene_path)
-				if guard != null:
+				if not guard.is_empty():
 					instance.free()
 					return guard
 				for change: Dictionary in changes:

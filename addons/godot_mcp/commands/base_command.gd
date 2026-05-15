@@ -175,10 +175,17 @@ func guard_offline_scene_save(path: String) -> Dictionary:
 	return {}
 
 
+func is_shader_resource_path(path: String) -> bool:
+	var ext := path.get_extension().to_lower()
+	return ext == "gdshader" or ext == "gdshaderinc" or ext == "shader"
+
+
 func is_text_resource_open_in_script_editor(path: String) -> bool:
 	var target := normalize_project_path(path)
 	if target.is_empty():
 		return false
+	if is_shader_resource_path(target) and ResourceLoader.has_cached(target):
+		return true
 	var script_editor := get_editor().get_script_editor()
 	if script_editor == null:
 		return false

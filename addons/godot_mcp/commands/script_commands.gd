@@ -160,7 +160,6 @@ func _edit_script(params: Dictionary) -> Dictionary:
 	var content := file.get_as_text()
 	file.close()
 
-	var old_content := content
 	var changes_made := 0
 
 	# Support search-and-replace
@@ -184,6 +183,32 @@ func _edit_script(params: Dictionary) -> Dictionary:
 						if content.contains(search):
 							content = content.replace(search, replace)
 							changes_made += 1
+
+	# Support 1-based inclusive line range replacement
+	elif params.has("content") and (params.has("start_line") or params.has("end_line")):
+		if not params.has("start_line"):
+			return error_invalid_params("start_line is required when end_line is provided")
+		var start_line: int = int(params["start_line"])
+		var end_line: int = int(params.get("end_line", start_line))
+		var lines := content.split("\n")
+		if start_line < 1:
+			return error_invalid_params("start_line must be >= 1")
+		if end_line < start_line:
+			return error_invalid_params("end_line must be >= start_line")
+		if start_line > lines.size():
+			return error_invalid_params("start_line is beyond the end of the file")
+		if end_line > lines.size():
+			return error_invalid_params("end_line is beyond the end of the file")
+
+		var replacement_lines := str(params["content"]).split("\n")
+		var start_index := start_line - 1
+		var remove_count := end_line - start_line + 1
+		for _i in range(remove_count):
+			lines.remove_at(start_index)
+		for i in range(replacement_lines.size()):
+			lines.insert(start_index + i, replacement_lines[i])
+		content = "\n".join(lines)
+		changes_made = 1
 
 	# Support full content replacement
 	elif params.has("content"):

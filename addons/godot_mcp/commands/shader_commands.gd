@@ -74,6 +74,16 @@ func _read_shader(params: Dictionary) -> Dictionary:
 	return success({"path": path, "content": content, "size": content.length()})
 
 
+func _refresh_loaded_shader(path: String, content: String) -> void:
+	get_editor().get_resource_filesystem().scan()
+	var normalized := normalize_project_path(path)
+	if normalized.is_empty() or not ResourceLoader.has_cached(normalized):
+		return
+	var shader_resource := ResourceLoader.load(normalized, "Shader")
+	if shader_resource is Shader:
+		(shader_resource as Shader).code = content
+
+
 func _edit_shader(params: Dictionary) -> Dictionary:
 	var result := require_string(params, "path")
 	if result[1] != null:
@@ -89,21 +99,17 @@ func _edit_shader(params: Dictionary) -> Dictionary:
 		return guard
 
 	var changes_made := 0
+	var content := ""
 
 	if params.has("content"):
-		# Full replacement
-		var file := FileAccess.open(path, FileAccess.WRITE)
-		if file == null:
-			return error_internal("Cannot write shader")
-		file.store_string(str(params["content"]))
-		file.close()
+		content = str(params["content"])
 		changes_made = 1
 	elif params.has("replacements") and params["replacements"] is Array:
 		# Read current
 		var file := FileAccess.open(path, FileAccess.READ)
 		if file == null:
 			return error_internal("Cannot read shader")
-		var content := file.get_as_text()
+		content = file.get_as_text()
 		file.close()
 
 		for replacement in params["replacements"]:
@@ -114,18 +120,13 @@ func _edit_shader(params: Dictionary) -> Dictionary:
 					content = content.replace(search, replace)
 					changes_made += 1
 
-		file = FileAccess.open(path, FileAccess.WRITE)
-		if file:
-			file.store_string(content)
-			file.close()
-
 	if changes_made > 0:
-		# Reload shader resource
-		get_editor().get_resource_filesystem().scan()
-		if ResourceLoader.exists(path):
-			var shader = load(path)
-			if shader is Shader:
-				shader.reload_from_file()
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		if file == null:
+			return error_internal("Cannot write shader: %s" % error_string(FileAccess.get_open_error()))
+		file.store_string(content)
+		file.close()
+		_refresh_loaded_shader(path, content)
 
 	return success({"path": path, "changes_made": changes_made})
 
