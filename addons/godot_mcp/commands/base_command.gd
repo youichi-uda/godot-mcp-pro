@@ -111,7 +111,7 @@ func get_editor() -> EditorInterface:
 
 ## Get the edited scene root
 func get_edited_root() -> Node:
-	return get_editor().get_edited_scene_root()
+	return EditorInterface.get_edited_scene_root()
 
 
 ## Get UndoRedo
@@ -134,7 +134,7 @@ func is_scene_resource_path(path: String) -> bool:
 
 func get_open_scene_paths() -> Array[String]:
 	var paths: Array[String] = []
-	var open_scenes: PackedStringArray = get_editor().get_open_scenes()
+	var open_scenes: PackedStringArray = EditorInterface.get_open_scenes()
 	for scene_path: String in open_scenes:
 		var normalized := normalize_project_path(scene_path)
 		if not normalized.is_empty() and normalized not in paths:
@@ -186,7 +186,7 @@ func is_text_resource_open_in_script_editor(path: String) -> bool:
 		return false
 	if is_shader_resource_path(target) and ResourceLoader.has_cached(target):
 		return true
-	var script_editor := get_editor().get_script_editor()
+	var script_editor := EditorInterface.get_script_editor()
 	if script_editor == null:
 		return false
 	for open_resource in script_editor.get_open_scripts():
@@ -210,9 +210,8 @@ func guard_text_resource_write(path: String, force: bool) -> Dictionary:
 
 
 func mark_current_scene_unsaved() -> void:
-	var ei := get_editor()
-	if ei != null and ei.has_method("mark_scene_as_unsaved"):
-		ei.mark_scene_as_unsaved()
+	if EditorInterface.has_method("mark_scene_as_unsaved"):
+		EditorInterface.mark_scene_as_unsaved()
 
 
 func add_child_with_undo(parent: Node, child: Node, root: Node, action_name: String) -> void:

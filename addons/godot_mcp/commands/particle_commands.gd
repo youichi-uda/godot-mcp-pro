@@ -316,8 +316,8 @@ func _apply_particle_preset(params: Dictionary) -> Dictionary:
 	var is_2d: bool = node is GPUParticles2D
 
 	# Default gravity for 2D (Y-down) vs 3D (Y-down)
-	var gravity_down := Vector3(0, 98 if is_2d else 9.8, 0)
-	var gravity_up := Vector3(0, -98 if is_2d else -9.8, 0)
+	var gravity_down := Vector3(0, 98.0 if is_2d else 9.8, 0)
+	var _gravity_up := Vector3(0, -98.0 if is_2d else -9.8, 0)
 	var gravity_none := Vector3.ZERO
 
 	match preset:

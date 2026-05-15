@@ -218,7 +218,6 @@ func _read_blend_tree_structure(bt: AnimationNodeBlendTree) -> Dictionary:
 		nodes_info.append(node_info)
 
 	# Read connections
-	var connections: Array = []
 	# BlendTree connections are stored as "node_connections" in properties
 	# We can read them from the resource property list
 	for prop in prop_list:
@@ -544,12 +543,15 @@ func _set_blend_tree_node(params: Dictionary) -> Dictionary:
 		undo_redo.add_do_method(bt, "connect_node", StringName(connect_to), connect_port, StringName(bt_node_name))
 	undo_redo.commit_action()
 
+	var connected_to_value: Variant = null
+	if not connect_to.is_empty():
+		connected_to_value = connect_to
 	return success({
 		"blend_tree_state": bt_state,
 		"bt_node_name": bt_node_name,
 		"bt_node_type": bt_node_type,
 		"position": {"x": position_x, "y": position_y},
-		"connected_to": connect_to if not connect_to.is_empty() else null,
+		"connected_to": connected_to_value,
 		"added": true,
 	})
 

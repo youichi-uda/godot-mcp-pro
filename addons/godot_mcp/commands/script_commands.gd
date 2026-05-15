@@ -127,7 +127,7 @@ func _create_script(params: Dictionary) -> Dictionary:
 	file.store_string(content)
 	file.close()
 
-	get_editor().get_resource_filesystem().scan()
+	EditorInterface.get_resource_filesystem().scan()
 
 	# Pre-load so the script is available immediately
 	if ResourceLoader.exists(path):
@@ -245,7 +245,7 @@ func _edit_script(params: Dictionary) -> Dictionary:
 ## Force-reload a script so the editor reflects disk changes immediately.
 func _reload_script(path: String) -> void:
 	# First, trigger a filesystem scan so Godot knows the file changed
-	get_editor().get_resource_filesystem().scan()
+	EditorInterface.get_resource_filesystem().scan()
 
 	# If the script is already loaded in memory, reload it
 	if ResourceLoader.exists(path):
@@ -255,7 +255,7 @@ func _reload_script(path: String) -> void:
 
 	# If the script is open in the script editor, the reload above updates it.
 	# But we also need to notify the editor to refresh its error indicators.
-	get_editor().get_script_editor().notification(Control.NOTIFICATION_VISIBILITY_CHANGED)
+	EditorInterface.get_script_editor().notification(Control.NOTIFICATION_VISIBILITY_CHANGED)
 
 
 func _attach_script(params: Dictionary) -> Dictionary:
@@ -331,8 +331,8 @@ func _validate_script(params: Dictionary) -> Dictionary:
 	})
 
 
-func _get_open_scripts(params: Dictionary) -> Dictionary:
-	var script_editor := get_editor().get_script_editor()
+func _get_open_scripts(_params: Dictionary) -> Dictionary:
+	var script_editor := EditorInterface.get_script_editor()
 	var open_scripts: Array = []
 
 	for script_base in script_editor.get_open_scripts():

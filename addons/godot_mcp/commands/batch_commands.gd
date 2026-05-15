@@ -354,7 +354,7 @@ func _cross_scene_set_property(params: Dictionary) -> Dictionary:
 
 	# Rescan filesystem so editor picks up changes
 	if not scenes_affected.is_empty():
-		get_editor().get_resource_filesystem().scan()
+		EditorInterface.get_resource_filesystem().scan()
 
 	return success({
 		"type": type_name,

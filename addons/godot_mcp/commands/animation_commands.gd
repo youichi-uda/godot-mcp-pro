@@ -63,7 +63,7 @@ func _create_animation(params: Dictionary) -> Dictionary:
 
 	var anim := Animation.new()
 	anim.length = length
-	anim.loop_mode = loop_mode
+	anim.loop_mode = loop_mode as Animation.LoopMode
 
 	var lib := player.get_animation_library("")
 	var created_library := false

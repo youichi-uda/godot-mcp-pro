@@ -35,7 +35,7 @@ func _create_theme(params: Dictionary) -> Dictionary:
 	if err != OK:
 		return error_internal("Failed to save theme: %s" % error_string(err))
 
-	get_editor().get_resource_filesystem().scan()
+	EditorInterface.get_resource_filesystem().scan()
 	return success({"path": path, "created": true})
 
 
@@ -327,28 +327,28 @@ func _setup_control(params: Dictionary) -> Dictionary:
 	return success({"node_path": node_path, "applied": applied, "count": applied.size()})
 
 
-func _restore_theme_override(control: Control, kind: String, name: String, had_old: bool, old_value: Variant) -> void:
+func _restore_theme_override(control: Control, kind: String, override_name: String, had_old: bool, old_value: Variant) -> void:
 	match kind:
 		"color":
 			if had_old:
-				control.add_theme_color_override(name, old_value)
+				control.add_theme_color_override(override_name, old_value)
 			else:
-				control.remove_theme_color_override(name)
+				control.remove_theme_color_override(override_name)
 		"constant":
 			if had_old:
-				control.add_theme_constant_override(name, old_value)
+				control.add_theme_constant_override(override_name, old_value)
 			else:
-				control.remove_theme_constant_override(name)
+				control.remove_theme_constant_override(override_name)
 		"font_size":
 			if had_old:
-				control.add_theme_font_size_override(name, old_value)
+				control.add_theme_font_size_override(override_name, old_value)
 			else:
-				control.remove_theme_font_size_override(name)
+				control.remove_theme_font_size_override(override_name)
 		"stylebox":
 			if had_old:
-				control.add_theme_stylebox_override(name, old_value)
+				control.add_theme_stylebox_override(override_name, old_value)
 			else:
-				control.remove_theme_stylebox_override(name)
+				control.remove_theme_stylebox_override(override_name)
 
 
 func _capture_control_setup_state(control: Control) -> Dictionary:
