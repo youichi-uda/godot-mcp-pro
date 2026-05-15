@@ -43,8 +43,8 @@ func _tilemap_set_cell(params: Dictionary) -> Dictionary:
 
 	var undo_redo := get_undo_redo()
 	undo_redo.create_action("MCP: Set TileMap cell")
-	undo_redo.add_do_method(self, "_apply_cells", tilemap, new_cells)
-	undo_redo.add_undo_method(self, "_apply_cells", tilemap, old_cells)
+	_add_do_set_cells(undo_redo, tilemap, new_cells)
+	_add_undo_set_cells(undo_redo, tilemap, old_cells)
 	undo_redo.commit_action()
 
 	return success({"x": x, "y": y, "source_id": source_id, "atlas_coords": [atlas_x, atlas_y]})
@@ -81,8 +81,8 @@ func _tilemap_fill_rect(params: Dictionary) -> Dictionary:
 
 	var undo_redo := get_undo_redo()
 	undo_redo.create_action("MCP: Fill TileMap rect")
-	undo_redo.add_do_method(self, "_apply_cells", tilemap, new_cells)
-	undo_redo.add_undo_method(self, "_apply_cells", tilemap, old_cells)
+	_add_do_set_cells(undo_redo, tilemap, new_cells)
+	_add_undo_set_cells(undo_redo, tilemap, old_cells)
 	undo_redo.commit_action()
 
 	return success({"filled": count, "rect": [x1, y1, x2, y2]})
@@ -132,7 +132,7 @@ func _tilemap_clear(params: Dictionary) -> Dictionary:
 	var undo_redo := get_undo_redo()
 	undo_redo.create_action("MCP: Clear TileMap")
 	undo_redo.add_do_method(tilemap, "clear")
-	undo_redo.add_undo_method(self, "_apply_cells", tilemap, old_cells)
+	_add_undo_set_cells(undo_redo, tilemap, old_cells)
 	undo_redo.commit_action()
 	return success({"cleared": true})
 
@@ -155,9 +155,14 @@ func _capture_cell(tilemap: TileMapLayer, coords: Vector2i) -> Dictionary:
 	)
 
 
-func _apply_cells(tilemap: TileMapLayer, cells: Array) -> void:
+func _add_do_set_cells(undo_redo: EditorUndoRedoManager, tilemap: TileMapLayer, cells: Array) -> void:
 	for cell: Dictionary in cells:
-		tilemap.set_cell(cell["coords"], cell["source_id"], cell["atlas_coords"], cell["alternative"])
+		undo_redo.add_do_method(tilemap, "set_cell", cell["coords"], cell["source_id"], cell["atlas_coords"], cell["alternative"])
+
+
+func _add_undo_set_cells(undo_redo: EditorUndoRedoManager, tilemap: TileMapLayer, cells: Array) -> void:
+	for cell: Dictionary in cells:
+		undo_redo.add_undo_method(tilemap, "set_cell", cell["coords"], cell["source_id"], cell["atlas_coords"], cell["alternative"])
 
 
 func _tilemap_get_info(params: Dictionary) -> Dictionary:

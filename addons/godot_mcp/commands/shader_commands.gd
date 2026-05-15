@@ -50,7 +50,7 @@ func _create_shader(params: Dictionary) -> Dictionary:
 	file.store_string(content)
 	file.close()
 
-	EditorInterface.get_resource_filesystem().scan()
+	_refresh_loaded_shader(path, content)
 
 	return success({"path": path, "shader_type": shader_type, "created": true})
 
@@ -75,13 +75,15 @@ func _read_shader(params: Dictionary) -> Dictionary:
 
 
 func _refresh_loaded_shader(path: String, content: String) -> void:
-	EditorInterface.get_resource_filesystem().scan()
 	var normalized := normalize_project_path(path)
-	if normalized.is_empty() or not ResourceLoader.has_cached(normalized):
+	if normalized.is_empty():
 		return
-	var shader_resource := ResourceLoader.load(normalized, "Shader")
-	if shader_resource is Shader:
-		(shader_resource as Shader).code = content
+	if ResourceLoader.has_cached(normalized):
+		var shader := Shader.new()
+		shader.code = content
+		shader.take_over_path(normalized)
+		shader.emit_changed()
+	EditorInterface.get_resource_filesystem().update_file(normalized)
 
 
 func _edit_shader(params: Dictionary) -> Dictionary:
