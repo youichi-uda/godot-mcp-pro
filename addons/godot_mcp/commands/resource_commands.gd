@@ -124,7 +124,7 @@ func _create_resource(params: Dictionary) -> Dictionary:
 	var properties: Dictionary = params.get("properties", {})
 	for prop_name: String in properties:
 		if prop_name in resource:
-			var current := resource.get(prop_name)
+			var current: Variant = resource.get(prop_name)
 			resource.set(prop_name, PropertyParser.parse_value(properties[prop_name], typeof(current)))
 
 	var err := ResourceSaver.save(resource, path)
@@ -132,7 +132,7 @@ func _create_resource(params: Dictionary) -> Dictionary:
 		return error_internal("Failed to save resource: %s" % error_string(err))
 
 	# Rescan filesystem
-	get_editor().get_resource_filesystem().scan()
+	EditorInterface.get_resource_filesystem().scan()
 
 	return success({
 		"path": path,
