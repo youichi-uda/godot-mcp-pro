@@ -14,6 +14,21 @@ func get_commands() -> Dictionary:
 	}
 
 
+func _guard_script_file_path(path: String, operation: String) -> Dictionary:
+	var ext := path.get_extension().to_lower()
+	if ext in ["gd", "cs"]:
+		return {}
+	return error(
+		-32602,
+		"%s only supports script files (.gd, .cs): %s" % [operation, normalize_project_path(path)],
+		{
+			"path": normalize_project_path(path),
+			"extension": ext,
+			"suggestion": "Use scene commands for .tscn/.scn files and shader commands for shader resources.",
+		}
+	)
+
+
 func _list_scripts(params: Dictionary) -> Dictionary:
 	var path: String = optional_string(params, "path", "res://")
 	var recursive: bool = optional_bool(params, "recursive", true)
@@ -92,6 +107,9 @@ func _create_script(params: Dictionary) -> Dictionary:
 	if result[1] != null:
 		return result[1]
 	var path: String = result[0]
+	var path_guard := _guard_script_file_path(path, "create_script")
+	if not path_guard.is_empty():
+		return path_guard
 
 	var content: String = optional_string(params, "content", "")
 	var base_class: String = optional_string(params, "extends", "Node")
@@ -143,6 +161,9 @@ func _edit_script(params: Dictionary) -> Dictionary:
 	if result[1] != null:
 		return result[1]
 	var path: String = result[0]
+	var path_guard := _guard_script_file_path(path, "edit_script")
+	if not path_guard.is_empty():
+		return path_guard
 
 	if not FileAccess.file_exists(path):
 		return error_not_found("Script '%s'" % path)
@@ -304,6 +325,9 @@ func _validate_script(params: Dictionary) -> Dictionary:
 	if result[1] != null:
 		return result[1]
 	var path: String = result[0]
+	var path_guard := _guard_script_file_path(path, "validate_script")
+	if not path_guard.is_empty():
+		return path_guard
 
 	if not FileAccess.file_exists(path):
 		return error_not_found("Script '%s'" % path)
