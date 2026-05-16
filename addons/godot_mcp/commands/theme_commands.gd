@@ -27,11 +27,15 @@ func _create_theme(params: Dictionary) -> Dictionary:
 	if font_size > 0:
 		theme.default_font_size = font_size
 
+	var scene_guard := guard_offline_scene_save(path)
+	if scene_guard != null:
+		return scene_guard
+
 	var err := ResourceSaver.save(theme, path)
 	if err != OK:
 		return error_internal("Failed to save theme: %s" % error_string(err))
 
-	get_editor().get_resource_filesystem().scan()
+	EditorInterface.get_resource_filesystem().scan()
 	return success({"path": path, "created": true})
 
 
@@ -62,7 +66,13 @@ func _set_theme_color(params: Dictionary) -> Dictionary:
 	if theme_type.is_empty():
 		theme_type = control.get_class()
 
-	control.add_theme_color_override(color_name, color)
+	var had_old := control.has_theme_color_override(color_name)
+	var old_value: Variant = control.get("theme_override_colors/" + color_name) if had_old else null
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Set theme color override")
+	undo_redo.add_do_method(control, "add_theme_color_override", color_name, color)
+	undo_redo.add_undo_method(self, "_restore_theme_override", control, "color", color_name, had_old, old_value)
+	undo_redo.commit_action()
 
 	return success({"node_path": node_path, "name": color_name, "color": color_str})
 
@@ -85,7 +95,13 @@ func _set_theme_constant(params: Dictionary) -> Dictionary:
 	var control: Control = node
 	var value: int = int(params.get("value", 0))
 
-	control.add_theme_constant_override(const_name, value)
+	var had_old := control.has_theme_constant_override(const_name)
+	var old_value: Variant = control.get("theme_override_constants/" + const_name) if had_old else null
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Set theme constant override")
+	undo_redo.add_do_method(control, "add_theme_constant_override", const_name, value)
+	undo_redo.add_undo_method(self, "_restore_theme_override", control, "constant", const_name, had_old, old_value)
+	undo_redo.commit_action()
 
 	return success({"node_path": node_path, "name": const_name, "value": value})
 
@@ -108,7 +124,13 @@ func _set_theme_font_size(params: Dictionary) -> Dictionary:
 	var control: Control = node
 	var size: int = int(params.get("size", 16))
 
-	control.add_theme_font_size_override(font_name, size)
+	var had_old := control.has_theme_font_size_override(font_name)
+	var old_value: Variant = control.get("theme_override_font_sizes/" + font_name) if had_old else null
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Set theme font size override")
+	undo_redo.add_do_method(control, "add_theme_font_size_override", font_name, size)
+	undo_redo.add_undo_method(self, "_restore_theme_override", control, "font_size", font_name, had_old, old_value)
+	undo_redo.commit_action()
 
 	return success({"node_path": node_path, "name": font_name, "size": size})
 
@@ -161,7 +183,16 @@ func _set_theme_stylebox(params: Dictionary) -> Dictionary:
 		stylebox.content_margin_right = padding
 		stylebox.content_margin_bottom = padding
 
-	control.add_theme_stylebox_override(style_name, stylebox)
+	var had_old := control.has_theme_stylebox_override(style_name)
+	var old_value: Variant = control.get("theme_override_styles/" + style_name) if had_old else null
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Set theme stylebox override")
+	undo_redo.add_do_method(control, "add_theme_stylebox_override", style_name, stylebox)
+	undo_redo.add_do_reference(stylebox)
+	undo_redo.add_undo_method(self, "_restore_theme_override", control, "stylebox", style_name, had_old, old_value)
+	if old_value is Resource:
+		undo_redo.add_undo_reference(old_value)
+	undo_redo.commit_action()
 
 	return success({"node_path": node_path, "name": style_name, "type": "StyleBoxFlat"})
 
@@ -178,6 +209,8 @@ func _setup_control(params: Dictionary) -> Dictionary:
 
 	var control: Control = node
 	var applied: Array = []
+	var old_state := _capture_control_setup_state(control)
+	var target: Control = control.duplicate() as Control
 
 	# Anchor preset
 	var anchor_preset: String = optional_string(params, "anchor_preset", "")
@@ -201,7 +234,7 @@ func _setup_control(params: Dictionary) -> Dictionary:
 			"full_rect": Control.PRESET_FULL_RECT,
 		}
 		if preset_map.has(anchor_preset):
-			control.set_anchors_and_offsets_preset(preset_map[anchor_preset])
+			target.set_anchors_and_offsets_preset(preset_map[anchor_preset])
 			applied.append("anchor_preset=%s" % anchor_preset)
 
 	# Min size
@@ -211,7 +244,7 @@ func _setup_control(params: Dictionary) -> Dictionary:
 		if expr.parse(min_size_str) == OK:
 			var val = expr.execute()
 			if val is Vector2:
-				control.custom_minimum_size = val
+				target.custom_minimum_size = val
 				applied.append("min_size=%s" % min_size_str)
 
 	# Size flags horizontal
@@ -225,7 +258,7 @@ func _setup_control(params: Dictionary) -> Dictionary:
 			"shrink_end": Control.SIZE_SHRINK_END,
 		}
 		if flags_map.has(sf_h):
-			control.size_flags_horizontal = flags_map[sf_h]
+			target.size_flags_horizontal = flags_map[sf_h]
 			applied.append("size_flags_h=%s" % sf_h)
 
 	# Size flags vertical
@@ -239,28 +272,28 @@ func _setup_control(params: Dictionary) -> Dictionary:
 			"shrink_end": Control.SIZE_SHRINK_END,
 		}
 		if flags_map.has(sf_v):
-			control.size_flags_vertical = flags_map[sf_v]
+			target.size_flags_vertical = flags_map[sf_v]
 			applied.append("size_flags_v=%s" % sf_v)
 
 	# Margins (for MarginContainer)
 	if params.has("margins") and params["margins"] is Dictionary:
 		var margins: Dictionary = params["margins"]
-		if control is MarginContainer:
+		if target is MarginContainer:
 			if margins.has("left"):
-				control.add_theme_constant_override("margin_left", int(margins["left"]))
+				target.add_theme_constant_override("margin_left", int(margins["left"]))
 			if margins.has("top"):
-				control.add_theme_constant_override("margin_top", int(margins["top"]))
+				target.add_theme_constant_override("margin_top", int(margins["top"]))
 			if margins.has("right"):
-				control.add_theme_constant_override("margin_right", int(margins["right"]))
+				target.add_theme_constant_override("margin_right", int(margins["right"]))
 			if margins.has("bottom"):
-				control.add_theme_constant_override("margin_bottom", int(margins["bottom"]))
+				target.add_theme_constant_override("margin_bottom", int(margins["bottom"]))
 			applied.append("margins=%s" % str(margins))
 
 	# Separation (for VBox/HBoxContainer)
 	if params.has("separation"):
 		var sep: int = int(params["separation"])
-		if control is BoxContainer:
-			control.add_theme_constant_override("separation", sep)
+		if target is BoxContainer:
+			target.add_theme_constant_override("separation", sep)
 			applied.append("separation=%d" % sep)
 
 	# Grow direction horizontal
@@ -272,7 +305,7 @@ func _setup_control(params: Dictionary) -> Dictionary:
 			"both": Control.GROW_DIRECTION_BOTH,
 		}
 		if grow_map.has(grow_h):
-			control.grow_horizontal = grow_map[grow_h]
+			target.grow_horizontal = grow_map[grow_h]
 			applied.append("grow_h=%s" % grow_h)
 
 	# Grow direction vertical
@@ -284,10 +317,70 @@ func _setup_control(params: Dictionary) -> Dictionary:
 			"both": Control.GROW_DIRECTION_BOTH,
 		}
 		if grow_map.has(grow_v):
-			control.grow_vertical = grow_map[grow_v]
+			target.grow_vertical = grow_map[grow_v]
 			applied.append("grow_v=%s" % grow_v)
 
+	if not applied.is_empty():
+		var new_state := _capture_control_setup_state(target)
+		_register_control_setup_undo(control, old_state, new_state)
+	target.free()
 	return success({"node_path": node_path, "applied": applied, "count": applied.size()})
+
+
+func _restore_theme_override(control: Control, kind: String, override_name: String, had_old: bool, old_value: Variant) -> void:
+	match kind:
+		"color":
+			if had_old:
+				control.add_theme_color_override(override_name, old_value)
+			else:
+				control.remove_theme_color_override(override_name)
+		"constant":
+			if had_old:
+				control.add_theme_constant_override(override_name, old_value)
+			else:
+				control.remove_theme_constant_override(override_name)
+		"font_size":
+			if had_old:
+				control.add_theme_font_size_override(override_name, old_value)
+			else:
+				control.remove_theme_font_size_override(override_name)
+		"stylebox":
+			if had_old:
+				control.add_theme_stylebox_override(override_name, old_value)
+			else:
+				control.remove_theme_stylebox_override(override_name)
+
+
+func _capture_control_setup_state(control: Control) -> Dictionary:
+	var state := {"properties": {}, "theme_constants": {}}
+	for property: String in [
+		"anchor_left", "anchor_top", "anchor_right", "anchor_bottom",
+		"offset_left", "offset_top", "offset_right", "offset_bottom",
+		"custom_minimum_size", "size_flags_horizontal", "size_flags_vertical",
+		"grow_horizontal", "grow_vertical",
+	]:
+		state["properties"][property] = control.get(property)
+	for constant_name: String in ["margin_left", "margin_top", "margin_right", "margin_bottom", "separation"]:
+		var had_override := control.has_theme_constant_override(constant_name)
+		state["theme_constants"][constant_name] = {
+			"had": had_override,
+			"value": control.get("theme_override_constants/" + constant_name) if had_override else null,
+		}
+	return state
+
+
+func _register_control_setup_undo(control: Control, old_state: Dictionary, new_state: Dictionary) -> void:
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Setup Control")
+	for property: String in new_state["properties"]:
+		undo_redo.add_do_property(control, property, new_state["properties"][property])
+		undo_redo.add_undo_property(control, property, old_state["properties"][property])
+	for constant_name: String in new_state["theme_constants"]:
+		var new_constant: Dictionary = new_state["theme_constants"][constant_name]
+		var old_constant: Dictionary = old_state["theme_constants"][constant_name]
+		undo_redo.add_do_method(self, "_restore_theme_override", control, "constant", constant_name, new_constant["had"], new_constant["value"])
+		undo_redo.add_undo_method(self, "_restore_theme_override", control, "constant", constant_name, old_constant["had"], old_constant["value"])
+	undo_redo.commit_action()
 
 
 func _get_theme_info(params: Dictionary) -> Dictionary:

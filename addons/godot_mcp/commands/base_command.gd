@@ -42,6 +42,10 @@ func error_internal(message: String) -> Dictionary:
 	return error(-32603, "Internal error: %s" % message)
 
 
+func error_conflict(message: String, data: Dictionary = {}) -> Dictionary:
+	return error(-32009, message, data)
+
+
 ## Get required string param
 func require_string(params: Dictionary, key: String) -> Array:
 	if not params.has(key) or not params[key] is String or (params[key] as String).is_empty():
@@ -107,12 +111,130 @@ func get_editor() -> EditorInterface:
 
 ## Get the edited scene root
 func get_edited_root() -> Node:
-	return get_editor().get_edited_scene_root()
+	return EditorInterface.get_edited_scene_root()
 
 
 ## Get UndoRedo
 func get_undo_redo() -> EditorUndoRedoManager:
 	return editor_plugin.get_undo_redo()
+
+
+func normalize_project_path(path: String) -> String:
+	if path.is_empty():
+		return ""
+	if path.begins_with("res://") or path.begins_with("user://"):
+		return path.simplify_path()
+	return ProjectSettings.localize_path(path).simplify_path()
+
+
+func is_scene_resource_path(path: String) -> bool:
+	var ext := path.get_extension().to_lower()
+	return ext == "tscn" or ext == "scn"
+
+
+func get_open_scene_paths() -> Array[String]:
+	var paths: Array[String] = []
+	var open_scenes: PackedStringArray = EditorInterface.get_open_scenes()
+	for scene_path: String in open_scenes:
+		var normalized := normalize_project_path(scene_path)
+		if not normalized.is_empty() and normalized not in paths:
+			paths.append(normalized)
+
+	var root := get_edited_root()
+	if root != null and not root.scene_file_path.is_empty():
+		var active_path := normalize_project_path(root.scene_file_path)
+		if active_path not in paths:
+			paths.append(active_path)
+	return paths
+
+
+func is_scene_path_open(path: String) -> bool:
+	var normalized := normalize_project_path(path)
+	if normalized.is_empty():
+		return false
+	return normalized in get_open_scene_paths()
+
+
+func is_active_scene_path(path: String) -> bool:
+	var root := get_edited_root()
+	if root == null:
+		return false
+	return normalize_project_path(root.scene_file_path) == normalize_project_path(path)
+
+
+func guard_offline_scene_save(path: String) -> Dictionary:
+	if is_scene_resource_path(path) and is_scene_path_open(path):
+		return error_conflict(
+			"Refusing to save open scene '%s' outside the Godot editor state" % normalize_project_path(path),
+			{
+				"path": normalize_project_path(path),
+				"open_scenes": get_open_scene_paths(),
+				"suggestion": "Use live editor changes plus save_scene, or close the scene before offline edits.",
+			}
+		)
+	return {}
+
+
+func is_shader_resource_path(path: String) -> bool:
+	var ext := path.get_extension().to_lower()
+	return ext == "gdshader" or ext == "gdshaderinc" or ext == "shader"
+
+
+func is_text_resource_open_in_script_editor(path: String) -> bool:
+	var target := normalize_project_path(path)
+	if target.is_empty():
+		return false
+	if is_shader_resource_path(target) and ResourceLoader.has_cached(target):
+		return true
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null:
+		return false
+	for open_resource in script_editor.get_open_scripts():
+		if open_resource is Resource:
+			var resource_path := normalize_project_path((open_resource as Resource).resource_path)
+			if resource_path == target:
+				return true
+	return false
+
+
+func guard_text_resource_write(path: String, force: bool) -> Dictionary:
+	if not force and is_text_resource_open_in_script_editor(path):
+		return error_conflict(
+			"Refusing to write open text resource '%s' outside the script editor state" % normalize_project_path(path),
+			{
+				"path": normalize_project_path(path),
+				"suggestion": "Close the file in Godot's script editor or pass force=true to overwrite it deliberately.",
+			}
+		)
+	return {}
+
+
+func mark_current_scene_unsaved() -> void:
+	if EditorInterface.has_method("mark_scene_as_unsaved"):
+		EditorInterface.mark_scene_as_unsaved()
+
+
+func add_child_with_undo(parent: Node, child: Node, root: Node, action_name: String) -> void:
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action(action_name)
+	undo_redo.add_do_method(parent, "add_child", child)
+	undo_redo.add_do_method(child, "set_owner", root)
+	undo_redo.add_do_reference(child)
+	undo_redo.add_undo_method(parent, "remove_child", child)
+	undo_redo.commit_action()
+
+
+func set_property_with_undo(target: Object, property: String, new_value: Variant, action_name: String) -> void:
+	var old_value: Variant = target.get(property)
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action(action_name)
+	undo_redo.add_do_property(target, property, new_value)
+	if new_value is Resource:
+		undo_redo.add_do_reference(new_value)
+	undo_redo.add_undo_property(target, property, old_value)
+	if old_value is Resource:
+		undo_redo.add_undo_reference(old_value)
+	undo_redo.commit_action()
 
 
 ## Find node by path in edited scene

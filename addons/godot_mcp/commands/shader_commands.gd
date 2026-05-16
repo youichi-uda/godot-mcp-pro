@@ -21,6 +21,11 @@ func _create_shader(params: Dictionary) -> Dictionary:
 
 	var content: String = optional_string(params, "content", "")
 	var shader_type: String = optional_string(params, "shader_type", "spatial")
+	var force: bool = optional_bool(params, "force", false)
+
+	var guard := guard_text_resource_write(path, force)
+	if not guard.is_empty():
+		return guard
 
 	if content.is_empty():
 		match shader_type:
@@ -45,7 +50,7 @@ func _create_shader(params: Dictionary) -> Dictionary:
 	file.store_string(content)
 	file.close()
 
-	get_editor().get_resource_filesystem().scan()
+	_refresh_loaded_shader(path, content)
 
 	return success({"path": path, "shader_type": shader_type, "created": true})
 
@@ -69,6 +74,18 @@ func _read_shader(params: Dictionary) -> Dictionary:
 	return success({"path": path, "content": content, "size": content.length()})
 
 
+func _refresh_loaded_shader(path: String, content: String) -> void:
+	var normalized := normalize_project_path(path)
+	if normalized.is_empty():
+		return
+	if ResourceLoader.has_cached(normalized):
+		var shader := Shader.new()
+		shader.code = content
+		shader.take_over_path(normalized)
+		shader.emit_changed()
+	EditorInterface.get_resource_filesystem().update_file(normalized)
+
+
 func _edit_shader(params: Dictionary) -> Dictionary:
 	var result := require_string(params, "path")
 	if result[1] != null:
@@ -78,22 +95,23 @@ func _edit_shader(params: Dictionary) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return error_not_found("Shader '%s'" % path)
 
+	var force: bool = optional_bool(params, "force", false)
+	var guard := guard_text_resource_write(path, force)
+	if not guard.is_empty():
+		return guard
+
 	var changes_made := 0
+	var content := ""
 
 	if params.has("content"):
-		# Full replacement
-		var file := FileAccess.open(path, FileAccess.WRITE)
-		if file == null:
-			return error_internal("Cannot write shader")
-		file.store_string(str(params["content"]))
-		file.close()
+		content = str(params["content"])
 		changes_made = 1
 	elif params.has("replacements") and params["replacements"] is Array:
 		# Read current
 		var file := FileAccess.open(path, FileAccess.READ)
 		if file == null:
 			return error_internal("Cannot read shader")
-		var content := file.get_as_text()
+		content = file.get_as_text()
 		file.close()
 
 		for replacement in params["replacements"]:
@@ -104,18 +122,13 @@ func _edit_shader(params: Dictionary) -> Dictionary:
 					content = content.replace(search, replace)
 					changes_made += 1
 
-		file = FileAccess.open(path, FileAccess.WRITE)
-		if file:
-			file.store_string(content)
-			file.close()
-
 	if changes_made > 0:
-		# Reload shader resource
-		get_editor().get_resource_filesystem().scan()
-		if ResourceLoader.exists(path):
-			var shader = load(path)
-			if shader is Shader:
-				shader.reload_from_file()
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		if file == null:
+			return error_internal("Cannot write shader: %s" % error_string(FileAccess.get_open_error()))
+		file.store_string(content)
+		file.close()
+		_refresh_loaded_shader(path, content)
 
 	return success({"path": path, "changes_made": changes_made})
 
@@ -146,13 +159,13 @@ func _assign_shader_material(params: Dictionary) -> Dictionary:
 	material.shader = shader
 
 	if node is CanvasItem:
-		(node as CanvasItem).material = material
+		set_property_with_undo(node, "material", material, "MCP: Assign shader material")
 	elif node is MeshInstance3D:
-		(node as MeshInstance3D).material_override = material
+		set_property_with_undo(node, "material_override", material, "MCP: Assign shader material")
 	else:
 		# Try generic material property
 		if "material" in node:
-			node.set("material", material)
+			set_property_with_undo(node, "material", material, "MCP: Assign shader material")
 		else:
 			return error_invalid_params("Node '%s' (%s) does not support materials" % [node_path, node.get_class()])
 

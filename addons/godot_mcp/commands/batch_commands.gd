@@ -110,18 +110,25 @@ func _batch_set_property(params: Dictionary) -> Dictionary:
 		return error_no_scene()
 
 	var affected: Array = []
-	_batch_set_recursive(root, root, type_name, property, value, affected)
+	var changes: Array = []
+	_batch_collect_property_changes(root, root, type_name, property, value, affected, changes)
+	if not changes.is_empty():
+		_apply_property_changes_with_undo(changes, property, "MCP: Batch set %s" % property)
 
 	return success({"property": property, "affected": affected, "count": affected.size()})
 
 
-func _batch_set_recursive(node: Node, root: Node, type_name: String, property: String, value: Variant, affected: Array) -> void:
+func _batch_collect_property_changes(node: Node, root: Node, type_name: String, property: String, value: Variant, affected: Array, changes: Array) -> void:
 	if node.is_class(type_name) or node.get_class() == type_name:
 		if property in node:
-			node.set(property, value)
 			affected.append(str(root.get_path_to(node)))
+			changes.append({
+				"node": node,
+				"old_value": node.get(property),
+				"new_value": value,
+			})
 	for child in node.get_children():
-		_batch_set_recursive(child, root, type_name, property, value, affected)
+		_batch_collect_property_changes(child, root, type_name, property, value, affected, changes)
 
 
 func _batch_add_nodes(params: Dictionary) -> Dictionary:
@@ -138,9 +145,6 @@ func _batch_add_nodes(params: Dictionary) -> Dictionary:
 
 	var created: Array = []
 	var errors: Array = []
-
-	var undo_redo := get_undo_redo()
-	undo_redo.create_action("MCP: Batch add %d nodes" % nodes_data.size())
 
 	for i: int in nodes_data.size():
 		var entry: Dictionary = nodes_data[i]
@@ -178,15 +182,7 @@ func _batch_add_nodes(params: Dictionary) -> Dictionary:
 				var target_type := typeof(current)
 				node.set(prop_name, PropertyParser.parse_value(properties[prop_name], target_type))
 
-		# Add directly so subsequent nodes can reference this as parent
-		parent.add_child(node)
-		node.set_owner(root)
-
-		# Register undo/redo (do methods re-add on redo, undo removes)
-		undo_redo.add_do_method(parent, "add_child", node)
-		undo_redo.add_do_method(node, "set_owner", root)
-		undo_redo.add_do_reference(node)
-		undo_redo.add_undo_method(parent, "remove_child", node)
+		add_child_with_undo(parent, node, root, "MCP: Batch add %s" % type)
 
 		created.append({
 			"index": i,
@@ -195,9 +191,6 @@ func _batch_add_nodes(params: Dictionary) -> Dictionary:
 			"parent": parent_path,
 			"node_path": str(root.get_path_to(node)),
 		})
-
-	# Commit without re-executing do methods (nodes already added)
-	undo_redo.commit_action(false)
 
 	var result := {"created": created, "count": created.size()}
 	if not errors.is_empty():
@@ -286,13 +279,40 @@ func _cross_scene_set_property(params: Dictionary) -> Dictionary:
 
 	var path_filter: String = optional_string(params, "path_filter", "res://")
 	var exclude_addons: bool = optional_bool(params, "exclude_addons", true)
+	var force: bool = optional_bool(params, "force", false)
+	var dry_run: bool = optional_bool(params, "dry_run", not force)
+	if not dry_run and not force:
+		return error_invalid_params("cross_scene_set_property requires force=true when dry_run=false")
 
 	var scenes_affected: Array = []
+	var skipped_open_scenes: Array = []
 	var total_nodes: int = 0
 	var scene_files: Array = []
 	_collect_scene_files(path_filter, scene_files, exclude_addons)
 
 	for scene_path: String in scene_files:
+		var normalized_scene_path := normalize_project_path(scene_path)
+
+		if is_scene_path_open(normalized_scene_path):
+			if is_active_scene_path(normalized_scene_path) and force and not dry_run:
+				var root := get_edited_root()
+				var live_changes: Array = []
+				var live_affected_nodes: Array = []
+				_cross_scene_collect_changes(root, root, type_name, property, value, live_affected_nodes, live_changes)
+				if not live_changes.is_empty():
+					_apply_property_changes_with_undo(live_changes, property, "MCP: Cross-scene set %s" % property)
+					scenes_affected.append({
+						"scene": normalized_scene_path,
+						"nodes": live_affected_nodes,
+						"count": live_affected_nodes.size(),
+						"mode": "live_open_scene",
+					})
+					total_nodes += live_affected_nodes.size()
+			else:
+				var reason := "open scene skipped during dry_run" if dry_run else "open scene is not the active editor scene"
+				skipped_open_scenes.append({"scene": normalized_scene_path, "reason": reason})
+			continue
+
 		var packed: PackedScene = ResourceLoader.load(scene_path) as PackedScene
 		if packed == null:
 			continue
@@ -301,17 +321,32 @@ func _cross_scene_set_property(params: Dictionary) -> Dictionary:
 			continue
 
 		var affected_nodes: Array = []
-		_cross_scene_set_recursive(instance, instance, type_name, property, value, affected_nodes)
+		var changes: Array = []
+		_cross_scene_collect_changes(instance, instance, type_name, property, value, affected_nodes, changes)
 
-		if not affected_nodes.is_empty():
+		if not changes.is_empty():
+			if not dry_run:
+				var guard := guard_offline_scene_save(normalized_scene_path)
+				if not guard.is_empty():
+					instance.free()
+					return guard
+				for change: Dictionary in changes:
+					(change["node"] as Node).set(property, value)
 			# Pack and save
-			var new_packed := PackedScene.new()
-			new_packed.pack(instance)
-			ResourceSaver.save(new_packed, scene_path)
+				var new_packed := PackedScene.new()
+				var pack_err := new_packed.pack(instance)
+				if pack_err != OK:
+					instance.free()
+					return error_internal("Failed to pack scene '%s': %s" % [normalized_scene_path, error_string(pack_err)])
+				var save_err := ResourceSaver.save(new_packed, normalized_scene_path)
+				if save_err != OK:
+					instance.free()
+					return error_internal("Failed to save scene '%s': %s" % [normalized_scene_path, error_string(save_err)])
 			scenes_affected.append({
-				"scene": scene_path,
+				"scene": normalized_scene_path,
 				"nodes": affected_nodes,
 				"count": affected_nodes.size(),
+				"mode": "dry_run" if dry_run else "offline_saved",
 			})
 			total_nodes += affected_nodes.size()
 
@@ -319,14 +354,18 @@ func _cross_scene_set_property(params: Dictionary) -> Dictionary:
 
 	# Rescan filesystem so editor picks up changes
 	if not scenes_affected.is_empty():
-		get_editor().get_resource_filesystem().scan()
+		EditorInterface.get_resource_filesystem().scan()
 
 	return success({
 		"type": type_name,
 		"property": property,
+		"dry_run": dry_run,
+		"force": force,
 		"scenes_affected": scenes_affected,
+		"skipped_open_scenes": skipped_open_scenes,
 		"total_scenes": scenes_affected.size(),
 		"total_nodes": total_nodes,
+		"message": "Dry run only. Re-run with force=true and dry_run=false to write closed scenes and live-edit the active open scene." if dry_run else "Changes applied.",
 	})
 
 
@@ -352,13 +391,27 @@ func _collect_scene_files(path: String, files: Array, exclude_addons: bool) -> v
 	dir.list_dir_end()
 
 
-func _cross_scene_set_recursive(node: Node, root: Node, type_name: String, property: String, value: Variant, affected: Array) -> void:
+func _cross_scene_collect_changes(node: Node, root: Node, type_name: String, property: String, value: Variant, affected: Array, changes: Array) -> void:
 	if node.is_class(type_name) or node.get_class() == type_name:
 		if property in node:
-			node.set(property, value)
 			affected.append(str(root.get_path_to(node)))
+			changes.append({
+				"node": node,
+				"old_value": node.get(property),
+				"new_value": value,
+			})
 	for child in node.get_children():
-		_cross_scene_set_recursive(child, root, type_name, property, value, affected)
+		_cross_scene_collect_changes(child, root, type_name, property, value, affected, changes)
+
+
+func _apply_property_changes_with_undo(changes: Array, property: String, action_name: String) -> void:
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action(action_name)
+	for change: Dictionary in changes:
+		var node: Node = change["node"]
+		undo_redo.add_do_property(node, property, change["new_value"])
+		undo_redo.add_undo_property(node, property, change["old_value"])
+	undo_redo.commit_action()
 
 
 func _get_scene_dependencies(params: Dictionary) -> Dictionary:

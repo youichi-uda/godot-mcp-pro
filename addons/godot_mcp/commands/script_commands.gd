@@ -14,6 +14,21 @@ func get_commands() -> Dictionary:
 	}
 
 
+func _guard_script_file_path(path: String, operation: String) -> Dictionary:
+	var ext := path.get_extension().to_lower()
+	if ext in ["gd", "cs"]:
+		return {}
+	return error(
+		-32602,
+		"%s only supports script files (.gd, .cs): %s" % [operation, normalize_project_path(path)],
+		{
+			"path": normalize_project_path(path),
+			"extension": ext,
+			"suggestion": "Use scene commands for .tscn/.scn files and shader commands for shader resources.",
+		}
+	)
+
+
 func _list_scripts(params: Dictionary) -> Dictionary:
 	var path: String = optional_string(params, "path", "res://")
 	var recursive: bool = optional_bool(params, "recursive", true)
@@ -92,10 +107,18 @@ func _create_script(params: Dictionary) -> Dictionary:
 	if result[1] != null:
 		return result[1]
 	var path: String = result[0]
+	var path_guard := _guard_script_file_path(path, "create_script")
+	if not path_guard.is_empty():
+		return path_guard
 
 	var content: String = optional_string(params, "content", "")
 	var base_class: String = optional_string(params, "extends", "Node")
 	var class_name_str: String = optional_string(params, "class_name", "")
+	var force: bool = optional_bool(params, "force", false)
+
+	var guard := guard_text_resource_write(path, force)
+	if not guard.is_empty():
+		return guard
 
 	# Generate template if no content provided
 	if content.is_empty():
@@ -122,7 +145,7 @@ func _create_script(params: Dictionary) -> Dictionary:
 	file.store_string(content)
 	file.close()
 
-	get_editor().get_resource_filesystem().scan()
+	EditorInterface.get_resource_filesystem().scan()
 
 	# Pre-load so the script is available immediately
 	if ResourceLoader.exists(path):
@@ -138,9 +161,17 @@ func _edit_script(params: Dictionary) -> Dictionary:
 	if result[1] != null:
 		return result[1]
 	var path: String = result[0]
+	var path_guard := _guard_script_file_path(path, "edit_script")
+	if not path_guard.is_empty():
+		return path_guard
 
 	if not FileAccess.file_exists(path):
 		return error_not_found("Script '%s'" % path)
+
+	var force: bool = optional_bool(params, "force", false)
+	var guard := guard_text_resource_write(path, force)
+	if not guard.is_empty():
+		return guard
 
 	# Read current content
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -150,7 +181,6 @@ func _edit_script(params: Dictionary) -> Dictionary:
 	var content := file.get_as_text()
 	file.close()
 
-	var old_content := content
 	var changes_made := 0
 
 	# Support search-and-replace
@@ -174,6 +204,32 @@ func _edit_script(params: Dictionary) -> Dictionary:
 						if content.contains(search):
 							content = content.replace(search, replace)
 							changes_made += 1
+
+	# Support 1-based inclusive line range replacement
+	elif params.has("content") and (params.has("start_line") or params.has("end_line")):
+		if not params.has("start_line"):
+			return error_invalid_params("start_line is required when end_line is provided")
+		var start_line: int = int(params["start_line"])
+		var end_line: int = int(params.get("end_line", start_line))
+		var lines := content.split("\n")
+		if start_line < 1:
+			return error_invalid_params("start_line must be >= 1")
+		if end_line < start_line:
+			return error_invalid_params("end_line must be >= start_line")
+		if start_line > lines.size():
+			return error_invalid_params("start_line is beyond the end of the file")
+		if end_line > lines.size():
+			return error_invalid_params("end_line is beyond the end of the file")
+
+		var replacement_lines := str(params["content"]).split("\n")
+		var start_index := start_line - 1
+		var remove_count := end_line - start_line + 1
+		for _i in range(remove_count):
+			lines.remove_at(start_index)
+		for i in range(replacement_lines.size()):
+			lines.insert(start_index + i, replacement_lines[i])
+		content = "\n".join(lines)
+		changes_made = 1
 
 	# Support full content replacement
 	elif params.has("content"):
@@ -210,7 +266,7 @@ func _edit_script(params: Dictionary) -> Dictionary:
 ## Force-reload a script so the editor reflects disk changes immediately.
 func _reload_script(path: String) -> void:
 	# First, trigger a filesystem scan so Godot knows the file changed
-	get_editor().get_resource_filesystem().scan()
+	EditorInterface.get_resource_filesystem().scan()
 
 	# If the script is already loaded in memory, reload it
 	if ResourceLoader.exists(path):
@@ -220,7 +276,7 @@ func _reload_script(path: String) -> void:
 
 	# If the script is open in the script editor, the reload above updates it.
 	# But we also need to notify the editor to refresh its error indicators.
-	get_editor().get_script_editor().notification(Control.NOTIFICATION_VISIBILITY_CHANGED)
+	EditorInterface.get_script_editor().notification(Control.NOTIFICATION_VISIBILITY_CHANGED)
 
 
 func _attach_script(params: Dictionary) -> Dictionary:
@@ -269,6 +325,9 @@ func _validate_script(params: Dictionary) -> Dictionary:
 	if result[1] != null:
 		return result[1]
 	var path: String = result[0]
+	var path_guard := _guard_script_file_path(path, "validate_script")
+	if not path_guard.is_empty():
+		return path_guard
 
 	if not FileAccess.file_exists(path):
 		return error_not_found("Script '%s'" % path)
@@ -296,8 +355,8 @@ func _validate_script(params: Dictionary) -> Dictionary:
 	})
 
 
-func _get_open_scripts(params: Dictionary) -> Dictionary:
-	var script_editor := get_editor().get_script_editor()
+func _get_open_scripts(_params: Dictionary) -> Dictionary:
+	var script_editor := EditorInterface.get_script_editor()
 	var open_scripts: Array = []
 
 	for script_base in script_editor.get_open_scripts():

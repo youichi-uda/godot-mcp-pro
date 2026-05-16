@@ -22,6 +22,10 @@ func _read_resource(params: Dictionary) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return error_not_found("Resource '%s'" % path)
 
+	var guard := guard_offline_scene_save(path)
+	if not guard.is_empty():
+		return guard
+
 	var resource: Resource = ResourceLoader.load(path)
 	if resource == null:
 		return error_internal("Failed to load resource: %s" % path)
@@ -56,6 +60,10 @@ func _edit_resource(params: Dictionary) -> Dictionary:
 
 	if not FileAccess.file_exists(path):
 		return error_not_found("Resource '%s'" % path)
+
+	var guard := guard_offline_scene_save(path)
+	if not guard.is_empty():
+		return guard
 
 	var resource: Resource = ResourceLoader.load(path)
 	if resource == null:
@@ -108,6 +116,10 @@ func _create_resource(params: Dictionary) -> Dictionary:
 	if FileAccess.file_exists(path) and not overwrite:
 		return error(-32000, "Resource already exists: %s" % path, {"suggestion": "Set overwrite=true to replace"})
 
+	var guard := guard_offline_scene_save(path)
+	if not guard.is_empty():
+		return guard
+
 	var resource: Resource = ClassDB.instantiate(resource_type)
 	if resource == null:
 		return error_internal("Failed to instantiate: %s" % resource_type)
@@ -116,7 +128,7 @@ func _create_resource(params: Dictionary) -> Dictionary:
 	var properties: Dictionary = params.get("properties", {})
 	for prop_name: String in properties:
 		if prop_name in resource:
-			var current := resource.get(prop_name)
+			var current: Variant = resource.get(prop_name)
 			resource.set(prop_name, PropertyParser.parse_value(properties[prop_name], typeof(current)))
 
 	var err := ResourceSaver.save(resource, path)
@@ -124,7 +136,7 @@ func _create_resource(params: Dictionary) -> Dictionary:
 		return error_internal("Failed to save resource: %s" % error_string(err))
 
 	# Rescan filesystem
-	get_editor().get_resource_filesystem().scan()
+	EditorInterface.get_resource_filesystem().scan()
 
 	return success({
 		"path": path,

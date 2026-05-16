@@ -355,7 +355,7 @@ func _add_resource(params: Dictionary) -> Dictionary:
 	var resource_props: Dictionary = params.get("resource_properties", {})
 	for prop_name: String in resource_props:
 		if prop_name in resource:
-			var current := resource.get(prop_name)
+			var current: Variant = resource.get(prop_name)
 			resource.set(prop_name, PropertyParser.parse_value(resource_props[prop_name], typeof(current)))
 
 	var old_value: Variant = node.get(property) if property in node else null
@@ -427,17 +427,18 @@ func _set_anchor_preset(params: Dictionary) -> Dictionary:
 	var old_anchors := [control.anchor_left, control.anchor_top, control.anchor_right, control.anchor_bottom]
 	var old_offsets := [control.offset_left, control.offset_top, control.offset_right, control.offset_bottom]
 
-	control.set_anchors_and_offsets_preset(presets[preset_name],
+	var target: Control = control.duplicate() as Control
+	target.set_anchors_and_offsets_preset(presets[preset_name],
 		Control.PRESET_MODE_KEEP_SIZE if keep_offsets else Control.PRESET_MODE_MINSIZE)
 
-	undo_redo.add_do_property(control, "anchor_left", control.anchor_left)
-	undo_redo.add_do_property(control, "anchor_top", control.anchor_top)
-	undo_redo.add_do_property(control, "anchor_right", control.anchor_right)
-	undo_redo.add_do_property(control, "anchor_bottom", control.anchor_bottom)
-	undo_redo.add_do_property(control, "offset_left", control.offset_left)
-	undo_redo.add_do_property(control, "offset_top", control.offset_top)
-	undo_redo.add_do_property(control, "offset_right", control.offset_right)
-	undo_redo.add_do_property(control, "offset_bottom", control.offset_bottom)
+	undo_redo.add_do_property(control, "anchor_left", target.anchor_left)
+	undo_redo.add_do_property(control, "anchor_top", target.anchor_top)
+	undo_redo.add_do_property(control, "anchor_right", target.anchor_right)
+	undo_redo.add_do_property(control, "anchor_bottom", target.anchor_bottom)
+	undo_redo.add_do_property(control, "offset_left", target.offset_left)
+	undo_redo.add_do_property(control, "offset_top", target.offset_top)
+	undo_redo.add_do_property(control, "offset_right", target.offset_right)
+	undo_redo.add_do_property(control, "offset_bottom", target.offset_bottom)
 
 	undo_redo.add_undo_property(control, "anchor_left", old_anchors[0])
 	undo_redo.add_undo_property(control, "anchor_top", old_anchors[1])
@@ -448,6 +449,7 @@ func _set_anchor_preset(params: Dictionary) -> Dictionary:
 	undo_redo.add_undo_property(control, "offset_right", old_offsets[2])
 	undo_redo.add_undo_property(control, "offset_bottom", old_offsets[3])
 
+	target.free()
 	undo_redo.commit_action()
 
 	return success({"node_path": str(root.get_path_to(control)), "preset": preset_name})
@@ -521,7 +523,12 @@ func _connect_signal(params: Dictionary) -> Dictionary:
 	if source.is_connected(signal_name, Callable(target, method_name)):
 		return success({"already_connected": true, "signal": signal_name})
 
-	source.connect(signal_name, Callable(target, method_name))
+	var callable := Callable(target, method_name)
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Connect signal")
+	undo_redo.add_do_method(source, "connect", signal_name, callable)
+	undo_redo.add_undo_method(source, "disconnect", signal_name, callable)
+	undo_redo.commit_action()
 
 	return success({
 		"source": str(root.get_path_to(source)),
@@ -568,7 +575,12 @@ func _disconnect_signal(params: Dictionary) -> Dictionary:
 	if not source.is_connected(signal_name, Callable(target, method_name)):
 		return success({"was_connected": false})
 
-	source.disconnect(signal_name, Callable(target, method_name))
+	var callable := Callable(target, method_name)
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Disconnect signal")
+	undo_redo.add_do_method(source, "disconnect", signal_name, callable)
+	undo_redo.add_undo_method(source, "connect", signal_name, callable)
+	undo_redo.commit_action()
 
 	return success({
 		"source": str(root.get_path_to(source)),
@@ -635,18 +647,25 @@ func _set_node_groups(params: Dictionary) -> Dictionary:
 	var added: Array = []
 	var removed: Array = []
 
-	# Remove groups not in desired
 	for group: String in current_groups:
 		if group not in desired_groups:
-			node.remove_from_group(group)
 			removed.append(group)
 
-	# Add groups not in current
 	for group in desired_groups:
 		var g: String = str(group)
 		if g not in current_groups:
-			node.add_to_group(g, true)
 			added.append(g)
+
+	if not added.is_empty() or not removed.is_empty():
+		var undo_redo := get_undo_redo()
+		undo_redo.create_action("MCP: Set node groups")
+		for group: String in removed:
+			undo_redo.add_do_method(node, "remove_from_group", group)
+			undo_redo.add_undo_method(node, "add_to_group", group, true)
+		for group: String in added:
+			undo_redo.add_do_method(node, "add_to_group", group, true)
+			undo_redo.add_undo_method(node, "remove_from_group", group)
+		undo_redo.commit_action()
 
 	return success({
 		"node_path": str(root.get_path_to(node)),

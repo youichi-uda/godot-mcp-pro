@@ -355,6 +355,10 @@ func _execute_editor_script(params: Dictionary) -> Dictionary:
 	if result[1] != null:
 		return result[1]
 	var code: String = result[0]
+	var allow_unsafe_editor_io: bool = optional_bool(params, "allow_unsafe_editor_io", false)
+	var unsafe_guard := _guard_editor_script_file_io(code, allow_unsafe_editor_io)
+	if not unsafe_guard.is_empty():
+		return unsafe_guard
 
 	# Wrap user code in a @tool script
 	var wrapped_code := """@tool
@@ -406,6 +410,40 @@ func run() -> Variant:
 		"output": mcp_output,
 		"return_value": str(output) if output != null else null,
 	})
+
+
+func _guard_editor_script_file_io(code: String, allow_unsafe_editor_io: bool) -> Dictionary:
+	if allow_unsafe_editor_io:
+		return {}
+	var compact := code.replace(" ", "").replace("\t", "").replace("\n", "")
+	var unsafe_patterns: Array[String] = []
+	if compact.contains("ResourceSaver.save("):
+		unsafe_patterns.append("ResourceSaver.save")
+	if compact.contains("ProjectSettings.save("):
+		unsafe_patterns.append("ProjectSettings.save")
+	if compact.contains("ConfigFile.save("):
+		unsafe_patterns.append("ConfigFile.save")
+	if compact.contains("FileAccess.open(") and _contains_any(compact, ["FileAccess.WRITE", "FileAccess.READ_WRITE", "FileAccess.WRITE_READ"]):
+		unsafe_patterns.append("FileAccess.open WRITE")
+	if _contains_any(compact, ["DirAccess.remove_absolute(", "DirAccess.rename_absolute(", "DirAccess.copy_absolute(", "DirAccess.make_dir_absolute(", "DirAccess.make_dir_recursive_absolute("]):
+		unsafe_patterns.append("DirAccess filesystem mutation")
+	if unsafe_patterns.is_empty():
+		return {}
+	return error_conflict(
+		"Refusing to execute editor script with direct file/resource write APIs",
+		{
+			"unsafe_patterns": unsafe_patterns,
+			"open_scenes": get_open_scene_paths(),
+			"suggestion": "Use dedicated MCP commands and save_scene for editor-owned resources, or pass allow_unsafe_editor_io=true only when no open editor resource can be overwritten.",
+		}
+	)
+
+
+func _contains_any(value: String, needles: Array[String]) -> bool:
+	for needle: String in needles:
+		if value.contains(needle):
+			return true
+	return false
 
 
 func _indent_code(code: String) -> String:

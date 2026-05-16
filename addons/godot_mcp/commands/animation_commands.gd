@@ -63,14 +63,27 @@ func _create_animation(params: Dictionary) -> Dictionary:
 
 	var anim := Animation.new()
 	anim.length = length
-	anim.loop_mode = loop_mode
+	anim.loop_mode = loop_mode as Animation.LoopMode
 
 	var lib := player.get_animation_library("")
+	var created_library := false
 	if lib == null:
 		lib = AnimationLibrary.new()
-		player.add_animation_library("", lib)
+		created_library = true
 
-	lib.add_animation(anim_name, anim)
+	if lib.has_animation(anim_name):
+		return error_invalid_params("Animation '%s' already exists" % anim_name)
+
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Create animation %s" % anim_name)
+	if created_library:
+		undo_redo.add_do_method(player, "add_animation_library", "", lib)
+		undo_redo.add_do_reference(lib)
+		undo_redo.add_undo_method(player, "remove_animation_library", "")
+	undo_redo.add_do_method(lib, "add_animation", anim_name, anim)
+	undo_redo.add_do_reference(anim)
+	undo_redo.add_undo_method(lib, "remove_animation", anim_name)
+	undo_redo.commit_action()
 
 	return success({"name": anim_name, "length": length, "created": true})
 
@@ -111,15 +124,20 @@ func _add_animation_track(params: Dictionary) -> Dictionary:
 		"blend_shape": track_type = Animation.TYPE_BLEND_SHAPE
 		_: track_type = Animation.TYPE_VALUE
 
-	var track_idx := anim.add_track(track_type)
-	anim.track_set_path(track_idx, NodePath(track_path))
+	var track_idx := anim.get_track_count()
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Add animation track")
+	undo_redo.add_do_method(anim, "add_track", track_type, track_idx)
+	undo_redo.add_do_method(anim, "track_set_path", track_idx, NodePath(track_path))
 
 	var update_mode_str: String = optional_string(params, "update_mode", "")
 	if not update_mode_str.is_empty() and track_type == Animation.TYPE_VALUE:
 		match update_mode_str:
-			"continuous": anim.value_track_set_update_mode(track_idx, Animation.UPDATE_CONTINUOUS)
-			"discrete": anim.value_track_set_update_mode(track_idx, Animation.UPDATE_DISCRETE)
-			"capture": anim.value_track_set_update_mode(track_idx, Animation.UPDATE_CAPTURE)
+			"continuous": undo_redo.add_do_method(anim, "value_track_set_update_mode", track_idx, Animation.UPDATE_CONTINUOUS)
+			"discrete": undo_redo.add_do_method(anim, "value_track_set_update_mode", track_idx, Animation.UPDATE_DISCRETE)
+			"capture": undo_redo.add_do_method(anim, "value_track_set_update_mode", track_idx, Animation.UPDATE_CAPTURE)
+	undo_redo.add_undo_method(anim, "remove_track", track_idx)
+	undo_redo.commit_action()
 
 	return success({"track_index": track_idx, "track_path": track_path, "track_type": track_type_str})
 
@@ -159,11 +177,19 @@ func _set_animation_keyframe(params: Dictionary) -> Dictionary:
 			if parsed != null:
 				value = parsed
 
-	var key_idx := anim.track_insert_key(track_index, time, value)
-
 	var easing: float = float(params.get("easing", 1.0))
-	if easing != 1.0:
-		anim.track_set_key_transition(track_index, key_idx, easing)
+	var old_key_idx := _find_animation_key_at_time(anim, track_index, time)
+	var had_old_key := old_key_idx >= 0
+	var old_value: Variant = anim.track_get_key_value(track_index, old_key_idx) if had_old_key else null
+	var old_easing: float = anim.track_get_key_transition(track_index, old_key_idx) if had_old_key else 1.0
+
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Set animation keyframe")
+	undo_redo.add_do_method(self, "_upsert_animation_key", anim, track_index, time, value, easing)
+	undo_redo.add_undo_method(self, "_restore_animation_key", anim, track_index, time, had_old_key, old_value, old_easing)
+	undo_redo.commit_action()
+
+	var key_idx := _find_animation_key_at_time(anim, track_index, time)
 
 	return success({"track_index": track_index, "time": time, "key_index": key_idx, "easing": anim.track_get_key_transition(track_index, key_idx)})
 
@@ -233,5 +259,40 @@ func _remove_animation(params: Dictionary) -> Dictionary:
 	if lib == null or not lib.has_animation(anim_name):
 		return error_not_found("Animation '%s'" % anim_name)
 
-	lib.remove_animation(anim_name)
+	var anim := lib.get_animation(anim_name)
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Remove animation %s" % anim_name)
+	undo_redo.add_do_method(lib, "remove_animation", anim_name)
+	undo_redo.add_undo_method(lib, "add_animation", anim_name, anim)
+	undo_redo.add_undo_reference(anim)
+	undo_redo.commit_action()
 	return success({"name": anim_name, "removed": true})
+
+
+func _find_animation_key_at_time(anim: Animation, track_index: int, time: float) -> int:
+	for key_index: int in anim.track_get_key_count(track_index):
+		if is_equal_approx(anim.track_get_key_time(track_index, key_index), time):
+			return key_index
+	return -1
+
+
+func _upsert_animation_key(anim: Animation, track_index: int, time: float, value: Variant, easing: float) -> void:
+	var key_idx := _find_animation_key_at_time(anim, track_index, time)
+	if key_idx < 0:
+		key_idx = anim.track_insert_key(track_index, time, value)
+	else:
+		anim.track_set_key_value(track_index, key_idx, value)
+	if easing != 1.0:
+		anim.track_set_key_transition(track_index, key_idx, easing)
+
+
+func _restore_animation_key(anim: Animation, track_index: int, time: float, had_old_key: bool, old_value: Variant, old_easing: float) -> void:
+	var key_idx := _find_animation_key_at_time(anim, track_index, time)
+	if had_old_key:
+		if key_idx < 0:
+			key_idx = anim.track_insert_key(track_index, time, old_value)
+		else:
+			anim.track_set_key_value(track_index, key_idx, old_value)
+		anim.track_set_key_transition(track_index, key_idx, old_easing)
+	elif key_idx >= 0:
+		anim.track_remove_key(track_index, key_idx)

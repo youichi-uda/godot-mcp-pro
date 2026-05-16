@@ -102,8 +102,7 @@ func _create_particles(params: Dictionary) -> Dictionary:
 		p.process_material = mat
 		particles_node = p
 
-	parent.add_child(particles_node, true)
-	particles_node.owner = root
+	add_child_with_undo(parent, particles_node, root, "MCP: Create particles")
 
 	return success({
 		"name": particles_node.name,
@@ -126,10 +125,12 @@ func _set_particle_material(params: Dictionary) -> Dictionary:
 	if node == null:
 		return error_not_found("GPUParticles2D/3D at '%s'" % node_path)
 
-	var mat: ParticleProcessMaterial = node.get("process_material")
-	if mat == null:
+	var old_mat: ParticleProcessMaterial = node.get("process_material")
+	var mat: ParticleProcessMaterial
+	if old_mat != null:
+		mat = old_mat.duplicate(true) as ParticleProcessMaterial
+	else:
 		mat = ParticleProcessMaterial.new()
-		node.set("process_material", mat)
 
 	var changes: Array = []
 
@@ -246,6 +247,8 @@ func _set_particle_material(params: Dictionary) -> Dictionary:
 		mat.attractor_interaction_enabled = bool(params["attractor_interaction_enabled"])
 		changes.append("attractor_interaction_enabled")
 
+	if not changes.is_empty():
+		set_property_with_undo(node, "process_material", mat, "MCP: Set particle material")
 	return success({"node_path": node_path, "changes": changes})
 
 
@@ -259,10 +262,12 @@ func _set_particle_color_gradient(params: Dictionary) -> Dictionary:
 	if node == null:
 		return error_not_found("GPUParticles2D/3D at '%s'" % node_path)
 
-	var mat: ParticleProcessMaterial = node.get("process_material")
-	if mat == null:
+	var old_mat: ParticleProcessMaterial = node.get("process_material")
+	var mat: ParticleProcessMaterial
+	if old_mat != null:
+		mat = old_mat.duplicate(true) as ParticleProcessMaterial
+	else:
 		mat = ParticleProcessMaterial.new()
-		node.set("process_material", mat)
 
 	if not params.has("stops") or not params["stops"] is Array:
 		return error_invalid_params("Missing required parameter: stops (array of {offset, color})")
@@ -285,6 +290,7 @@ func _set_particle_color_gradient(params: Dictionary) -> Dictionary:
 	var grad_tex := GradientTexture1D.new()
 	grad_tex.gradient = gradient
 	mat.color_ramp = grad_tex
+	set_property_with_undo(node, "process_material", mat, "MCP: Set particle color gradient")
 
 	return success({"node_path": node_path, "stops_count": gradient.get_point_count()})
 
@@ -304,20 +310,22 @@ func _apply_particle_preset(params: Dictionary) -> Dictionary:
 	if node == null:
 		return error_not_found("GPUParticles2D/3D at '%s'" % node_path)
 
+	var old_state := _capture_particle_state(node)
+	var preset_state := {}
 	var mat := ParticleProcessMaterial.new()
 	var is_2d: bool = node is GPUParticles2D
 
 	# Default gravity for 2D (Y-down) vs 3D (Y-down)
-	var gravity_down := Vector3(0, 98 if is_2d else 9.8, 0)
-	var gravity_up := Vector3(0, -98 if is_2d else -9.8, 0)
+	var gravity_down := Vector3(0, 98.0 if is_2d else 9.8, 0)
+	var _gravity_up := Vector3(0, -98.0 if is_2d else -9.8, 0)
 	var gravity_none := Vector3.ZERO
 
 	match preset:
 		"explosion":
-			node.set("amount", 32)
-			node.set("lifetime", 0.6)
-			node.set("one_shot", true)
-			node.set("explosiveness", 1.0)
+			preset_state["amount"] = 32
+			preset_state["lifetime"] = 0.6
+			preset_state["one_shot"] = true
+			preset_state["explosiveness"] = 1.0
 			mat.direction = Vector3(0, -1, 0) if is_2d else Vector3(0, 1, 0)
 			mat.spread = 180.0
 			mat.initial_velocity_min = 100.0 if is_2d else 5.0
@@ -336,10 +344,10 @@ func _apply_particle_preset(params: Dictionary) -> Dictionary:
 			])
 
 		"fire":
-			node.set("amount", 24)
-			node.set("lifetime", 1.2)
-			node.set("one_shot", false)
-			node.set("explosiveness", 0.0)
+			preset_state["amount"] = 24
+			preset_state["lifetime"] = 1.2
+			preset_state["one_shot"] = false
+			preset_state["explosiveness"] = 0.0
 			mat.direction = Vector3(0, -1, 0) if is_2d else Vector3(0, 1, 0)
 			mat.spread = 15.0
 			mat.initial_velocity_min = 30.0 if is_2d else 1.5
@@ -355,10 +363,10 @@ func _apply_particle_preset(params: Dictionary) -> Dictionary:
 			])
 
 		"smoke":
-			node.set("amount", 16)
-			node.set("lifetime", 3.0)
-			node.set("one_shot", false)
-			node.set("explosiveness", 0.0)
+			preset_state["amount"] = 16
+			preset_state["lifetime"] = 3.0
+			preset_state["one_shot"] = false
+			preset_state["explosiveness"] = 0.0
 			mat.direction = Vector3(0, -1, 0) if is_2d else Vector3(0, 1, 0)
 			mat.spread = 25.0
 			mat.initial_velocity_min = 10.0 if is_2d else 0.5
@@ -375,10 +383,10 @@ func _apply_particle_preset(params: Dictionary) -> Dictionary:
 			])
 
 		"sparks":
-			node.set("amount", 48)
-			node.set("lifetime", 0.4)
-			node.set("one_shot", true)
-			node.set("explosiveness", 0.95)
+			preset_state["amount"] = 48
+			preset_state["lifetime"] = 0.4
+			preset_state["one_shot"] = true
+			preset_state["explosiveness"] = 0.95
 			mat.direction = Vector3(0, -1, 0) if is_2d else Vector3(0, 1, 0)
 			mat.spread = 180.0
 			mat.initial_velocity_min = 200.0 if is_2d else 8.0
@@ -395,10 +403,10 @@ func _apply_particle_preset(params: Dictionary) -> Dictionary:
 			])
 
 		"rain":
-			node.set("amount", 64)
-			node.set("lifetime", 0.8)
-			node.set("one_shot", false)
-			node.set("explosiveness", 0.0)
+			preset_state["amount"] = 64
+			preset_state["lifetime"] = 0.8
+			preset_state["one_shot"] = false
+			preset_state["explosiveness"] = 0.0
 			mat.direction = Vector3(0, 1, 0) if is_2d else Vector3(0, -1, 0)
 			mat.spread = 5.0
 			mat.initial_velocity_min = 300.0 if is_2d else 12.0
@@ -411,10 +419,10 @@ func _apply_particle_preset(params: Dictionary) -> Dictionary:
 			mat.color = Color(0.6, 0.7, 1.0, 0.7)
 
 		"snow":
-			node.set("amount", 48)
-			node.set("lifetime", 4.0)
-			node.set("one_shot", false)
-			node.set("explosiveness", 0.0)
+			preset_state["amount"] = 48
+			preset_state["lifetime"] = 4.0
+			preset_state["one_shot"] = false
+			preset_state["explosiveness"] = 0.0
 			mat.direction = Vector3(0, 1, 0) if is_2d else Vector3(0, -1, 0)
 			mat.spread = 20.0
 			mat.initial_velocity_min = 20.0 if is_2d else 0.8
@@ -431,10 +439,10 @@ func _apply_particle_preset(params: Dictionary) -> Dictionary:
 			mat.color = Color(1.0, 1.0, 1.0, 0.9)
 
 		"magic":
-			node.set("amount", 24)
-			node.set("lifetime", 2.0)
-			node.set("one_shot", false)
-			node.set("explosiveness", 0.0)
+			preset_state["amount"] = 24
+			preset_state["lifetime"] = 2.0
+			preset_state["one_shot"] = false
+			preset_state["explosiveness"] = 0.0
 			mat.direction = Vector3(0, -1, 0) if is_2d else Vector3(0, 1, 0)
 			mat.spread = 180.0
 			mat.initial_velocity_min = 20.0 if is_2d else 1.0
@@ -455,10 +463,10 @@ func _apply_particle_preset(params: Dictionary) -> Dictionary:
 			])
 
 		"dust":
-			node.set("amount", 12)
-			node.set("lifetime", 5.0)
-			node.set("one_shot", false)
-			node.set("explosiveness", 0.0)
+			preset_state["amount"] = 12
+			preset_state["lifetime"] = 5.0
+			preset_state["one_shot"] = false
+			preset_state["explosiveness"] = 0.0
 			mat.direction = Vector3(0, -1, 0) if is_2d else Vector3(0, 1, 0)
 			mat.spread = 180.0
 			mat.initial_velocity_min = 3.0 if is_2d else 0.1
@@ -480,9 +488,31 @@ func _apply_particle_preset(params: Dictionary) -> Dictionary:
 		_:
 			return error_invalid_params("Unknown preset: '%s'. Valid presets: explosion, fire, smoke, sparks, rain, snow, magic, dust" % preset)
 
-	node.set("process_material", mat)
+	preset_state["process_material"] = mat
+	_register_particle_state_undo(node, old_state, preset_state, "MCP: Apply particle preset")
 
 	return success({"node_path": node_path, "preset": preset, "applied": true})
+
+
+func _capture_particle_state(node: Node) -> Dictionary:
+	var state := {}
+	for property: String in ["amount", "lifetime", "one_shot", "explosiveness", "randomness", "emitting", "process_material"]:
+		if property in node:
+			state[property] = node.get(property)
+	return state
+
+
+func _register_particle_state_undo(node: Node, old_state: Dictionary, new_state: Dictionary, action_name: String) -> void:
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action(action_name)
+	for property: String in new_state:
+		undo_redo.add_do_property(node, property, new_state[property])
+		if new_state[property] is Resource:
+			undo_redo.add_do_reference(new_state[property])
+		undo_redo.add_undo_property(node, property, old_state.get(property, null))
+		if old_state.get(property, null) is Resource:
+			undo_redo.add_undo_reference(old_state[property])
+	undo_redo.commit_action()
 
 
 func _apply_gradient(mat: ParticleProcessMaterial, stops: Array) -> void:
