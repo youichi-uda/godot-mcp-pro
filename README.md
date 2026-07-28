@@ -1,5 +1,7 @@
 # Godot MCP Pro
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Fyouichi-uda%2Fgodot-mcp-pro.svg)](https://mcptoplist.com/server/glama%2Fyouichi-uda%2Fgodot-mcp-pro)
+
 Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **175 powerful tools**.
 
 ## Architecture
