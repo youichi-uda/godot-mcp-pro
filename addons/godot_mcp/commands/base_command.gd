@@ -586,6 +586,90 @@ func build_timeout_error(timeout_sec: float) -> Dictionary:
 	return error(-32000, msg, data)
 
 
+## ── Verified text-file writes ──────────────────────────────────────────────
+## edit_script / create_script / edit_shader / create_shader used to report
+## success from having *called* store_string() without ever looking at the
+## file again. When something else overwrote the file right after the write
+## (a second MCP session talking to the same editor through another server
+## port, a stale duplicate tool call, an editor-side buffer save), the edit
+## silently vanished even though the caller had been told it landed. These
+## helpers turn that silent loss into a loud error or a logged diagnosis.
+
+## One gate per normalized path: while a gate exists and is not done, other
+## writers wait. Static so the script and shader command instances share it.
+static var _text_write_gates: Dictionary = {}
+
+
+## Runs `op` (a Callable returning a result Dictionary) exclusively per file
+## path. Several MCP sessions can be attached to one editor at once — each
+## through its own server port — and their commands run as overlapping
+## coroutines, so two read-modify-write cycles on the same file can
+## interleave into a lost update. Awaiting this lets one caller's
+## read-to-write section finish before the next one starts.
+func run_path_serialized(path: String, op: Callable) -> Dictionary:
+	var key := normalize_project_path(path).to_lower()
+	var lock_waited := 0.0
+	while _text_write_gates.has(key) and not _text_write_gates[key]["done"]:
+		# A handler that dies mid-run would leave its gate closed forever;
+		# time out and proceed loudly rather than queueing every future
+		# write of this file behind a dead gate.
+		if lock_waited >= 10.0:
+			push_warning("[MCP] Waited %.0fs for the previous write to '%s' to finish; proceeding anyway." % [lock_waited, key])
+			break
+		await get_tree().create_timer(0.05).timeout
+		lock_waited += 0.05
+	var gate := {"done": false}
+	_text_write_gates[key] = gate
+	var result: Dictionary = await op.call()
+	gate["done"] = true
+	if _text_write_gates.get(key) == gate:
+		_text_write_gates.erase(key)
+	return result
+
+
+## Reads the file back and compares it against the content that was just
+## written. Returns {} when the bytes on disk match, or an error dictionary
+## carrying the md5 evidence when they do not.
+func verify_text_write(path: String, expected: String, what: String) -> Dictionary:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return error_internal(
+			"%s: the file cannot be read back after writing it: %s" % [what, error_string(FileAccess.get_open_error())]
+		)
+	var on_disk := file.get_as_text()
+	file.close()
+	if on_disk == expected:
+		return {}
+	return error(
+		-32003,
+		"%s: what is on disk does not match what was just written — the edit did not persist." % what,
+		{
+			"path": normalize_project_path(path),
+			"md5_expected": expected.md5_text(),
+			"md5_on_disk": on_disk.md5_text(),
+			"suggestion": "Another writer overwrote the file immediately (a parallel MCP session on a second server port, a stale duplicate tool call, or an editor buffer save). Re-read the file, reapply the edit once, and check again.",
+		}
+	)
+
+
+## Fire-and-forget delayed re-check: reads the file again ~5s after the edit
+## was reported and, when it no longer matches, logs the md5 evidence to the
+## editor Output so a late overwrite still leaves a trace. Call it without
+## await; the tool response must not wait on it.
+func watch_text_persistence(path: String, expected_md5: String, what: String) -> void:
+	await get_tree().create_timer(5.0).timeout
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		push_warning("[MCP] %s: '%s' can no longer be read ~5s after writing it." % [what, normalize_project_path(path)])
+		return
+	var disk_md5 := file.get_as_text().md5_text()
+	file.close()
+	if disk_md5 != expected_md5:
+		push_error(
+			"[MCP] %s: '%s' was overwritten after the edit had been reported as written. Expected md5 %s, found %s. Look for a second writer: a parallel MCP session, a stale duplicate tool call, or an editor buffer save." % [what, normalize_project_path(path), expected_md5, disk_md5]
+		)
+
+
 ## Find node by path in edited scene
 func find_node_by_path(node_path: String) -> Node:
 	var root := get_edited_root()

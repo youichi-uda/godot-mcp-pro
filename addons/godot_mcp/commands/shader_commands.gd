@@ -54,6 +54,12 @@ func _create_shader(params: Dictionary) -> Dictionary:
 	file.store_string(content)
 	file.close()
 
+	# Prove the write instead of assuming it; see base_command.gd.
+	var verify := verify_text_write(path, content, "create_shader")
+	if not verify.is_empty():
+		return verify
+	watch_text_persistence(path, content.md5_text(), "create_shader")
+
 	_refresh_loaded_shader(path, content)
 
 	return success({"path": path, "shader_type": shader_type, "created": true})
@@ -104,6 +110,12 @@ func _edit_shader(params: Dictionary) -> Dictionary:
 	if not guard.is_empty():
 		return guard
 
+	# Serialized per path so concurrent sessions cannot interleave two
+	# read-modify-write cycles on one shader file; see base_command.gd.
+	return await run_path_serialized(path, _edit_shader_write.bind(path, params))
+
+
+func _edit_shader_write(path: String, params: Dictionary) -> Dictionary:
 	var changes_made := 0
 	var content := ""
 
@@ -132,6 +144,13 @@ func _edit_shader(params: Dictionary) -> Dictionary:
 			return error_internal("Cannot write shader: %s" % error_string(FileAccess.get_open_error()))
 		file.store_string(content)
 		file.close()
+
+		# Prove the write instead of assuming it; see base_command.gd.
+		var verify := verify_text_write(path, content, "edit_shader")
+		if not verify.is_empty():
+			return verify
+		watch_text_persistence(path, content.md5_text(), "edit_shader")
+
 		_refresh_loaded_shader(path, content)
 
 	return success({"path": path, "changes_made": changes_made})
