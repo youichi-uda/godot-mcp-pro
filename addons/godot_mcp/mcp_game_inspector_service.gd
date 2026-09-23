@@ -729,7 +729,6 @@ func _cmd_execute_script(params: Dictionary) -> void:
 	var wrapped := """extends Node
 
 var _mcp_output: Array = []
-var _mcp_error: String = ""
 
 func _mcp_print(value: Variant) -> void:
 	_mcp_output.append(str(value))
