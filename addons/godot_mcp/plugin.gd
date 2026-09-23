@@ -39,7 +39,8 @@ func _enter_tree() -> void:
 	# Create status panel
 	var panel_scene: PackedScene = preload("res://addons/godot_mcp/ui/status_panel.tscn")
 	status_panel = panel_scene.instantiate()
-	add_control_to_bottom_panel(status_panel, "MCP Pro")
+	var panel_button: Button = add_control_to_bottom_panel(status_panel, "MCP Pro")
+	_apply_panel_icon.call_deferred(panel_button)
 	status_panel.call_deferred("setup", websocket_server, command_router)
 
 	# Inject MCP autoloads into project settings
@@ -72,6 +73,39 @@ func _exit_tree() -> void:
 		websocket_server.queue_free()
 
 	print("[MCP] Godot MCP Pro stopped")
+
+
+## Gives the bottom-panel tab an icon (issue #38).
+## Godot 4.6+ wraps every bottom-panel control in an EditorDock and draws the
+## tab icon from its `dock_icon` (shown when Editor Settings >
+## Interface > Editor > Bottom Dock Tab Style includes icons). Older versions
+## only have the Button returned by add_control_to_bottom_panel. The wrapper
+## is resolved by class name so this still parses on 4.5 and earlier, where
+## EditorDock does not exist. The SVG is rasterised at the editor scale
+## instead of relying on the import pipeline, so it also works on the very
+## first enable before the file has been imported.
+func _apply_panel_icon(button: Button) -> void:
+	var icon := _load_panel_icon()
+	if icon == null:
+		return
+	var wrapper: Node = status_panel.get_parent() if status_panel else null
+	if wrapper != null and wrapper.get_class() == "EditorDock":
+		wrapper.set("dock_icon", icon)
+	elif button != null:
+		button.icon = icon
+
+
+func _load_panel_icon() -> Texture2D:
+	const ICON_PATH := "res://addons/godot_mcp/icons/mcp_pro.svg"
+	var file := FileAccess.open(ICON_PATH, FileAccess.READ)
+	if file == null:
+		return null
+	var svg := file.get_as_text()
+	file.close()
+	var img := Image.new()
+	if img.load_svg_from_string(svg, EditorInterface.get_editor_scale()) != OK:
+		return null
+	return ImageTexture.create_from_image(img)
 
 
 ## Declares the opt-in connection token setting so it is discoverable in

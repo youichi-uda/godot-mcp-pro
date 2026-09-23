@@ -39,20 +39,13 @@ func _get_editor_errors(params: Dictionary) -> Dictionary:
 				if line.contains("ERROR") or line.contains("SCRIPT ERROR") or line.contains("Parse Error") or line.contains("WARNING"):
 					errors.append(line.strip_edges())
 
-	# 2. Check the script editor for compile errors (red background lines)
-	#    These don't appear in the Output panel
+	# 2. (Removed.) Earlier versions inferred "compile errors" from lines with a
+	#    red-ish background in the first CodeEdit found under the ScriptEditor.
+	#    That paired the focused tab's path with another tab's line numbers and
+	#    text, and flagged warning highlights as errors (issue #40). Step 3 reads
+	#    the analyzer panels of every open editor, which is the real source.
 	var script_errors: Array = []
 	var script_editor: ScriptEditor = EditorInterface.get_script_editor()
-	if script_editor:
-		var current_script: Script = script_editor.get_current_script()
-		var ce: CodeEdit = _find_code_edit(script_editor)
-		if ce and current_script:
-			var script_path: String = current_script.resource_path
-			for i in range(ce.get_line_count()):
-				var bg: Color = ce.get_line_background_color(i)
-				if bg.r > 0.8 and bg.a > 0:  # Red-ish background = error
-					var line_text: String = ce.get_line(i).strip_edges()
-					script_errors.append("COMPILE ERROR: %s:%d - %s" % [script_path, i + 1, line_text])
 
 	# 3. Read from script editor error/warning panels (GDScript analyzer messages)
 	#    Each open script editor has a VSplitContainer with two RichTextLabels:
@@ -206,18 +199,6 @@ func _get_output_log(params: Dictionary) -> Dictionary:
 			output_lines.append(line)
 
 	return success({"lines": output_lines, "count": output_lines.size(), "source": "output_panel"})
-
-
-func _find_code_edit(node: Node, depth: int = 0) -> CodeEdit:
-	if depth > 8:
-		return null
-	if node is CodeEdit:
-		return node as CodeEdit
-	for child in node.get_children():
-		var found: CodeEdit = _find_code_edit(child, depth + 1)
-		if found:
-			return found
-	return null
 
 
 func _find_rtl(node: Node, depth: int = 0) -> RichTextLabel:

@@ -141,8 +141,9 @@ func get_game_user_dir() -> String:
 	if typeof(disk_name) != TYPE_STRING or (disk_name as String).is_empty():
 		return cached_dir
 	# Sanitize exactly like Godot does when computing the default user dir
-	# (core/config/project_settings.cpp ProjectSettings::_init).
-	var sanitized := (disk_name as String).xml_unescape().validate_filename().replace(".", "_")
+	# (OS::get_user_data_dir -> OS::get_safe_dir_name). Periods are kept:
+	# "MyGame_V0.04" really lives under app_userdata/MyGame_V0.04 (issue #39).
+	var sanitized := get_safe_dir_name(disk_name as String)
 	if sanitized.is_empty():
 		return cached_dir
 	var base_dir := cached_dir.get_base_dir()
@@ -151,6 +152,18 @@ func get_game_user_dir() -> String:
 	if not DirAccess.dir_exists_absolute(game_dir):
 		DirAccess.make_dir_recursive_absolute(game_dir)
 	return game_dir
+
+
+## Port of OS::get_safe_dir_name(name, allow_paths=false) from core/os/os.cpp.
+## Godot replaces each of  : * ? " < > | / \  with "-" and trims whitespace;
+## nothing else is altered. String.validate_filename() is NOT equivalent: it
+## substitutes "_" instead of "-" and also strips "%", so a project name such
+## as "Game 100%" would resolve to a directory the running game never uses.
+static func get_safe_dir_name(dir_name: String) -> String:
+	var safe := dir_name.strip_edges()
+	for invalid in [":", "*", "?", "\"", "<", ">", "|", "/", "\\"]:
+		safe = safe.replace(invalid, "-")
+	return safe
 
 
 ## Get EditorInterface
@@ -598,6 +611,9 @@ func build_timeout_error(timeout_sec: float) -> Dictionary:
 ## One gate per normalized path: while a gate exists and is not done, other
 ## writers wait. Static so the script and shader command instances share it.
 static var _text_write_gates: Dictionary = {}
+## Last md5 this addon wrote per normalized path, so a delayed persistence
+## check knows whether a newer MCP write has already replaced its content.
+static var _last_text_write_md5: Dictionary = {}
 
 
 ## Runs `op` (a Callable returning a result Dictionary) exclusively per file
@@ -657,7 +673,13 @@ func verify_text_write(path: String, expected: String, what: String) -> Dictiona
 ## editor Output so a late overwrite still leaves a trace. Call it without
 ## await; the tool response must not wait on it.
 func watch_text_persistence(path: String, expected_md5: String, what: String) -> void:
+	var key := normalize_project_path(path).to_lower()
+	_last_text_write_md5[key] = expected_md5
 	await get_tree().create_timer(5.0).timeout
+	# A later MCP write to the same file supersedes this check; the normal
+	# create_script -> edit_script sequence must not be reported as a lost edit.
+	if _last_text_write_md5.get(key, "") != expected_md5:
+		return
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		push_warning("[MCP] %s: '%s' can no longer be read ~5s after writing it." % [what, normalize_project_path(path)])
@@ -665,8 +687,11 @@ func watch_text_persistence(path: String, expected_md5: String, what: String) ->
 	var disk_md5 := file.get_as_text().md5_text()
 	file.close()
 	if disk_md5 != expected_md5:
-		push_error(
-			"[MCP] %s: '%s' was overwritten after the edit had been reported as written. Expected md5 %s, found %s. Look for a second writer: a parallel MCP session, a stale duplicate tool call, or an editor buffer save." % [what, normalize_project_path(path), expected_md5, disk_md5]
+		# A warning, not an error: the file legitimately changes whenever the
+		# user or a later tool call edits it within these 5s. The md5 pair is
+		# what makes a genuinely lost edit diagnosable after the fact.
+		push_warning(
+			"[MCP] %s: '%s' changed within ~5s of the edit being reported as written (md5 %s -> %s). If nothing else was supposed to touch it, look for a second writer: a parallel MCP session on another server port, a stale duplicate tool call, or an editor buffer save." % [what, normalize_project_path(path), expected_md5, disk_md5]
 		)
 
 

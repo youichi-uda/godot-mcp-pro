@@ -186,8 +186,9 @@ func _edit_script(params: Dictionary) -> Dictionary:
 	var written: Dictionary = await run_path_serialized(path, _edit_script_write.bind(path, params))
 	if written.has("error"):
 		return written
+	var write_result: Dictionary = written.get("result", {})
 
-	var changes_made: int = written.get("changes_made", 0)
+	var changes_made: int = write_result.get("changes_made", 0)
 	if changes_made == 0:
 		return success({"path": path, "changes_made": 0, "message": "No changes applied"})
 
@@ -195,7 +196,7 @@ func _edit_script(params: Dictionary) -> Dictionary:
 	# without that check a success answer only meant store_string() was
 	# called, not that the file kept the content.
 	var payload := {"path": path, "changes_made": changes_made, "disk_verified": true}
-	var indent_warning: String = written.get("indent_warning", "")
+	var indent_warning: String = write_result.get("indent_warning", "")
 	if not indent_warning.is_empty():
 		payload["indentation_warning"] = indent_warning
 
@@ -219,8 +220,8 @@ func _edit_script(params: Dictionary) -> Dictionary:
 
 ## Read-modify-write part of edit_script, executed via run_path_serialized so
 ## concurrent edits to the same file are ordered. Returns
-## {"changes_made": int, "indent_warning": String} on success or an error
-## dictionary.
+## success({"changes_made": int, "indent_warning": String}) or an error
+## dictionary, following the same shape as every other handler.
 func _edit_script_write(path: String, params: Dictionary) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
@@ -296,7 +297,7 @@ func _edit_script_write(path: String, params: Dictionary) -> Dictionary:
 		changes_made = 1
 
 	if changes_made == 0:
-		return {"changes_made": 0, "indent_warning": ""}
+		return success({"changes_made": 0, "indent_warning": ""})
 
 	var original_content := original_for_diff
 	var indent_warning := _indentation_mismatch_warning(original_content, content)
@@ -316,7 +317,7 @@ func _edit_script_write(path: String, params: Dictionary) -> Dictionary:
 		return verify
 	watch_text_persistence(path, content.md5_text(), "edit_script")
 
-	return {"changes_made": changes_made, "indent_warning": indent_warning}
+	return success({"changes_made": changes_made, "indent_warning": indent_warning})
 
 
 ## Flags an edit whose indentation style differs from the file's own.
