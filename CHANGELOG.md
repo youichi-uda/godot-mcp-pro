@@ -4,6 +4,14 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## Unreleased
+
+### Fixed — High
+- **`edit_script` could report success for an edit that never persisted.** The write path called `store_string()`, counted the replacements and validated the new text — but nothing ever looked at the file again, so a second writer that overwrote the file right after the write (a parallel MCP session riding the same editor through another server port, a stale duplicate tool call, an editor buffer save) silently reverted the edit while the caller had been told it landed. Reported against a live setup with four MCP server processes attached to one editor, where edits vanished intermittently with the file's mtime advancing but its md5 staying identical to the pre-edit content. `edit_script` / `create_script` / `edit_shader` / `create_shader` now read the file back after writing and return a `-32003` error carrying `md5_expected` / `md5_on_disk` when the bytes on disk do not match what was just written; a fire-and-forget re-check ~5s later logs a diagnosis to the editor Output when a late overwrite still happens; and `edit_script` answers include `disk_verified: true` to say the result was proven, not assumed.
+- **Concurrent text-file edits could interleave into a lost update.** Several MCP sessions can be attached to one editor at once (each through its own server port), and command handlers run as overlapping coroutines — two read-modify-write cycles on the same file could race. `edit_script` and `edit_shader` now run their read-to-write section exclusively per file path (`run_path_serialized`), so one session's edit completes before the next one reads the file.
+
+---
+
 ## v1.16.0 — 2026-08-01
 
 **Minor** — a follow-up audit from the same reporter as v1.15.1, then a sweep of every file the audit touched and several it did not. 44 commits. Adds a headless execution path, an optional connection token, and a `SECURITY.md`.

@@ -145,6 +145,12 @@ func _create_script(params: Dictionary) -> Dictionary:
 	file.store_string(content)
 	file.close()
 
+	# Prove the write instead of assuming it; see base_command.gd.
+	var verify := verify_text_write(path, content, "create_script")
+	if not verify.is_empty():
+		return verify
+	watch_text_persistence(path, content.md5_text(), "create_script")
+
 	EditorInterface.get_resource_filesystem().scan()
 
 	# Pre-load so the script is available immediately
@@ -173,7 +179,49 @@ func _edit_script(params: Dictionary) -> Dictionary:
 	if not guard.is_empty():
 		return guard
 
-	# Read current content
+	# The read-modify-write section runs exclusively per file path: several
+	# MCP sessions can ride the same editor at once (each through its own
+	# server port), and two overlapping edits on one file interleave into a
+	# silently lost update.
+	var written: Dictionary = await run_path_serialized(path, _edit_script_write.bind(path, params))
+	if written.has("error"):
+		return written
+
+	var changes_made: int = written.get("changes_made", 0)
+	if changes_made == 0:
+		return success({"path": path, "changes_made": 0, "message": "No changes applied"})
+
+	# The write was verified against disk before this response was built;
+	# without that check a success answer only meant store_string() was
+	# called, not that the file kept the content.
+	var payload := {"path": path, "changes_made": changes_made, "disk_verified": true}
+	var indent_warning: String = written.get("indent_warning", "")
+	if not indent_warning.is_empty():
+		payload["indentation_warning"] = indent_warning
+
+	# Reload the script resource so the editor picks up changes immediately
+	_reload_script(path)
+
+	# Report immediately if the edit left the file unparseable. Writing blindly
+	# is how a bad edit stays invisible until something else fails much later.
+	var check := await _validate_script({"path": path})
+	var check_result: Dictionary = check.get("result", {})
+	if check_result.get("valid") == false:
+		payload["valid_after_edit"] = false
+		payload["message"] = "The edit was written, but the file no longer parses. Review it or edit again."
+		if check_result.has("parse_errors"):
+			payload["parse_errors"] = check_result["parse_errors"]
+	elif check_result.get("valid") == true:
+		payload["valid_after_edit"] = true
+
+	return success(payload)
+
+
+## Read-modify-write part of edit_script, executed via run_path_serialized so
+## concurrent edits to the same file are ordered. Returns
+## {"changes_made": int, "indent_warning": String} on success or an error
+## dictionary.
+func _edit_script_write(path: String, params: Dictionary) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return error_internal("Cannot read script: %s" % error_string(FileAccess.get_open_error()))
@@ -248,7 +296,7 @@ func _edit_script(params: Dictionary) -> Dictionary:
 		changes_made = 1
 
 	if changes_made == 0:
-		return success({"path": path, "changes_made": 0, "message": "No changes applied"})
+		return {"changes_made": 0, "indent_warning": ""}
 
 	var original_content := original_for_diff
 	var indent_warning := _indentation_mismatch_warning(original_content, content)
@@ -261,26 +309,14 @@ func _edit_script(params: Dictionary) -> Dictionary:
 	file.store_string(content)
 	file.close()
 
-	# Reload the script resource so the editor picks up changes immediately
-	_reload_script(path)
+	# Prove the write instead of assuming it: report an error, with md5
+	# evidence, when the file on disk does not hold what was just written.
+	var verify := verify_text_write(path, content, "edit_script")
+	if not verify.is_empty():
+		return verify
+	watch_text_persistence(path, content.md5_text(), "edit_script")
 
-	var payload := {"path": path, "changes_made": changes_made}
-	if not indent_warning.is_empty():
-		payload["indentation_warning"] = indent_warning
-
-	# Report immediately if the edit left the file unparseable. Writing blindly
-	# is how a bad edit stays invisible until something else fails much later.
-	var check := await _validate_script({"path": path})
-	var check_result: Dictionary = check.get("result", {})
-	if check_result.get("valid") == false:
-		payload["valid_after_edit"] = false
-		payload["message"] = "The edit was written, but the file no longer parses. Review it or edit again."
-		if check_result.has("parse_errors"):
-			payload["parse_errors"] = check_result["parse_errors"]
-	elif check_result.get("valid") == true:
-		payload["valid_after_edit"] = true
-
-	return success(payload)
+	return {"changes_made": changes_made, "indent_warning": indent_warning}
 
 
 ## Flags an edit whose indentation style differs from the file's own.
