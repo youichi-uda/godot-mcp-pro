@@ -391,6 +391,16 @@ func _detect_indent_style(text: String) -> String:
 ##   wait for the clock to pass the file's timestamp, rewrite the identical
 ##   bytes so the timestamp moves, and reload again.
 func _sync_open_editor_buffer(path: String, payload: Dictionary) -> void:
+	# reload_open_files() reloads EVERY open script, and a buffer holding edits
+	# from a failed save is reported clean by Godot, so any such buffer (this
+	# file's or another's) would be reloaded over. Skip the reload entirely.
+	var protected := get_protected_unsaved_buffers()
+	if not protected.is_empty():
+		payload["editor_buffer_reloaded"] = false
+		if protected.has(normalize_project_path(path)):
+			payload["editor_buffer_unsaved"] = true
+		payload["editor_buffer_warning"] = "Script editor buffers were not reloaded because these still hold edits from a failed save, and a reload would discard them: %s. Save them (save_all) or discard them (close_script with discard_unsaved=true), then call reload_open_scripts." % ", ".join(PackedStringArray(protected))
+		return
 	if not reload_script_editor_buffers():
 		return
 	var still_unsaved: Variant = is_script_unsaved_in_editor(path)
@@ -409,6 +419,13 @@ func _sync_open_editor_buffer(path: String, payload: Dictionary) -> void:
 		await get_tree().create_timer(0.1).timeout
 		waited += 0.1
 	var touched: Dictionary = await run_path_serialized(path, _rewrite_same_content.bind(path))
+	# Re-check after the awaits above: another session may have hit a failed
+	# save meanwhile, and this reload is global.
+	var protected_now := get_protected_unsaved_buffers()
+	if not protected_now.is_empty():
+		payload["editor_buffer_reloaded"] = false
+		payload["editor_buffer_warning"] = "Script editor buffers were not reloaded because these still hold edits from a failed save, and a reload would discard them: %s." % ", ".join(PackedStringArray(protected_now))
+		return
 	if not touched.has("error"):
 		reload_script_editor_buffers()
 	var synced := _editor_buffer_matches_disk(path)
@@ -441,22 +458,11 @@ func _rewrite_same_content(path: String) -> Dictionary:
 ## file on disk (line endings ignored). False when it differs or the script
 ## is not open.
 func _editor_buffer_matches_disk(path: String) -> bool:
-	var script_editor := EditorInterface.get_script_editor()
-	if script_editor == null:
+	var buffer: Variant = get_script_buffer_text(path)
+	if buffer == null:
 		return false
-	var target := normalize_project_path(path)
-	var editors: Array = script_editor.get_open_script_editors()
-	var scripts: Array = script_editor.get_open_scripts()
-	for i in mini(editors.size(), scripts.size()):
-		if not scripts[i] is Resource or not paths_match(normalize_project_path((scripts[i] as Resource).resource_path), target):
-			continue
-		var base_editor: Control = (editors[i] as ScriptEditorBase).get_base_editor()
-		if not base_editor is TextEdit:
-			return false
-		var buffer_text := (base_editor as TextEdit).text.replace("\r\n", "\n")
-		var disk_text := FileAccess.get_file_as_string(path).replace("\r\n", "\n")
-		return buffer_text == disk_text
-	return false
+	var disk_text := FileAccess.get_file_as_string(path).replace("\r\n", "\n")
+	return (buffer as String).replace("\r\n", "\n") == disk_text
 
 
 ## Closes a script tab in the script editor (ScriptEditor.close_file, Godot
@@ -493,7 +499,9 @@ func _close_script(params: Dictionary) -> Dictionary:
 		)
 
 	var unsaved_state: Variant = is_script_unsaved_in_editor(editor_path)
-	var was_unsaved: bool = unsaved_state is bool and unsaved_state
+	# Also compare the buffer with disk: after a failed save Godot reports
+	# the script clean while its edits exist only in this buffer.
+	var was_unsaved: bool = (unsaved_state is bool and unsaved_state) or get_buffers_differing_from_disk().has(normalize_project_path(editor_path))
 	if was_unsaved and not discard_unsaved:
 		return error_conflict(
 			"Refusing to close '%s': its script editor buffer has unsaved changes" % path,
@@ -513,18 +521,47 @@ func _close_script(params: Dictionary) -> Dictionary:
 ## Reloads the script editor's open buffers from disk (ScriptEditor
 ## .reload_open_files, Godot 4.7+). Buffers with unsaved edits are kept as
 ## they are, which the response lists so nothing is silently assumed synced.
-func _reload_open_scripts(_params: Dictionary) -> Dictionary:
+func _reload_open_scripts(params: Dictionary) -> Dictionary:
 	var unsaved_before: Variant = get_unsaved_script_paths()
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null or not script_editor.has_method("reload_open_files"):
+		return error_requires_godot("reload_open_scripts", "4.7")
+	# Edits left behind by a failed save are no longer flagged as modified,
+	# so Godot would reload over them. Refuse unless the caller opts in.
+	var protected := get_protected_unsaved_buffers()
+	if not protected.is_empty() and not optional_bool(params, "discard_unsaved", false):
+		return error_conflict(
+			"Refusing to reload: these buffers hold edits whose save failed, and reloading would replace them with the older disk contents",
+			{
+				"unsaved_after_failed_save": protected,
+				"suggestion": "Fix the save problem (e.g. a read-only file) and call save_all, or pass discard_unsaved=true to reload anyway and lose those edits.",
+			}
+		)
 	if not reload_script_editor_buffers():
 		return error_requires_godot("reload_open_scripts", "4.7")
 	var open_scripts: Array = []
 	for open_resource in EditorInterface.get_script_editor().get_open_scripts():
 		if open_resource is Resource and not (open_resource as Resource).resource_path.is_empty():
 			open_scripts.append(normalize_project_path((open_resource as Resource).resource_path))
-	var payload := {"reloaded": true, "open_scripts": open_scripts}
-	if unsaved_before is Array and not (unsaved_before as Array).is_empty():
-		payload["kept_unsaved"] = unsaved_before
+	# reload_open_files() only starts Godot's own disk check: with
+	# "auto reload scripts on external change" off it opens a confirmation
+	# dialog and keeps the old buffer. Measure the result instead of assuming.
+	await get_tree().process_frame
+	var kept_unsaved: Array = unsaved_before if unsaved_before is Array else []
+	var not_reloaded: Array = []
+	for pair: Dictionary in get_open_script_editor_pairs():
+		var p: String = pair["path"]
+		if p.is_empty() or p.contains("::") or kept_unsaved.has(normalize_project_path(p)) or kept_unsaved.has(p):
+			continue
+		if not _editor_buffer_matches_disk(p):
+			not_reloaded.append(normalize_project_path(p))
+	var payload := {"reloaded": not_reloaded.is_empty(), "open_scripts": open_scripts}
+	if not kept_unsaved.is_empty():
+		payload["kept_unsaved"] = kept_unsaved
 		payload["note"] = "Buffers listed in kept_unsaved have unsaved edits, so Godot did not reload them from disk."
+	if not not_reloaded.is_empty():
+		payload["not_reloaded"] = not_reloaded
+		payload["suggestion"] = "These buffers still differ from disk. Godot may be showing a reload confirmation dialog (Editor Settings > Text Editor > Behavior > Files > Auto Reload Scripts on External Change is off); answer it or enable that setting."
 	return success(payload)
 
 

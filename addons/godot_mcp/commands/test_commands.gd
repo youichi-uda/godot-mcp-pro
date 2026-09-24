@@ -45,17 +45,28 @@ func _run_test_scenario(params: Dictionary) -> Dictionary:
 
 	# Play scene if requested
 	if not scene_path.is_empty():
+		# Validate before touching the running game.
+		if scene_path != "main" and scene_path != "current":
+			if not FileAccess.file_exists(scene_path):
+				return error_not_found("Scene file '%s'" % scene_path)
+			var ext := scene_path.get_extension().to_lower()
+			if ext != "tscn" and ext != "scn":
+				return error_invalid_params("'%s' is not a scene file (.tscn/.scn)" % scene_path)
 		if ei.is_playing_scene():
+			# Same as stop_scene: end the session so waiting writers cannot
+			# publish into the next game.
+			bump_play_session()
 			ei.stop_playing_scene()
 			await get_tree().create_timer(0.5).timeout
 
+		# Starting a game can save first ("save before running"); protect
+		# script buffers against a failed implicit save.
+		protect_script_buffers_before_save()
 		if scene_path == "main":
 			ei.play_main_scene()
 		elif scene_path == "current":
 			ei.play_current_scene()
 		else:
-			if not FileAccess.file_exists(scene_path):
-				return error_not_found("Scene file '%s'" % scene_path)
 			ei.play_custom_scene(scene_path)
 
 		# Wait for game to start
@@ -86,6 +97,10 @@ func _run_test_scenario(params: Dictionary) -> Dictionary:
 			"input":
 				var input_result := await _execute_input_step(step)
 				step_result.merge(input_result)
+				# An input step that could not be sent is an error; the
+				# scenario must not report all_passed without its input.
+				if input_result.has("error"):
+					error_count += 1
 
 			"wait":
 				var wait_result := await _execute_wait_step(step)
@@ -274,6 +289,11 @@ func _run_stress_test(params: Dictionary) -> Dictionary:
 		actions.append(str(action))
 
 	var events_sent: int = 0
+	var last_ack := ""
+	var batches_unconfirmed := 0
+	# Tags this run's batches, so cancelling them cannot touch other input.
+	var stress_group := "stress_%d_%d" % [OS.get_process_id(), Time.get_ticks_usec()]
+	var stopped_early := false
 	var start_time := Time.get_ticks_msec()
 	var duration_ms := int(duration * 1000.0)
 
@@ -305,20 +325,45 @@ func _run_stress_test(params: Dictionary) -> Dictionary:
 				"strength": 0.0,
 			})
 
-		# Write input commands directly (same as input_commands)
-		var json := JSON.stringify({
+		# Backpressure: wait until the game has dispatched the previous batch.
+		# The game plays one event per frame, so at low frame rates batches
+		# sent on a fixed timer piled up and kept firing after the test had
+		# reported completion.
+		if not last_ack.is_empty():
+			if not await _await_input_ack(last_ack, 2.0):
+				# The game is not keeping up (very low frame rate, paused):
+				# sending more would only grow its queue. Stop here; the batch
+				# gets its final wait (and is counted once) after the loop.
+				stopped_early = true
+				break
+			last_ack = ""
+		# The wait above may have run past the requested duration; do not
+		# start another batch after it.
+		if Time.get_ticks_msec() - start_time >= duration_ms:
+			break
+		var ack_id := "%d_%d" % [OS.get_process_id(), Time.get_ticks_usec()]
+		var sent: Dictionary = await write_input_payload({
 			"sequence_events": batch,
 			"frame_delay": 1,
+			"ack_id": ack_id,
+			"cancel_group": stress_group,
 		})
-		await await_input_payload_consumed("user://mcp_input_commands")
-		var file := FileAccess.open("user://mcp_input_commands", FileAccess.WRITE)
-		if file:
-			file.store_string(json)
-			file.close()
-			events_sent += batch.size()
-
+		if not sent.is_empty():
+			# Never overwrite input the game has not read yet.
+			stopped_early = true
+			break
+		events_sent += batch.size()
+		last_ack = ack_id
 		await get_tree().create_timer(0.1).timeout
 
+	# Let the final batch play out before counting errors, so errors it
+	# causes are included and nothing keeps firing into the next test.
+	var input_cancelled := false
+	if not last_ack.is_empty() and not await _await_input_ack(last_ack, 5.0):
+		batches_unconfirmed += 1
+		# Still not played out: cancel what is queued (releasing its actions)
+		# so nothing keeps firing into whatever runs next.
+		input_cancelled = await _cancel_game_input_queue(stress_group)
 	var elapsed := (Time.get_ticks_msec() - start_time) / 1000.0
 	var final_errors := _count_log_errors()
 	var new_errors := final_errors - initial_errors
@@ -333,7 +378,33 @@ func _run_stress_test(params: Dictionary) -> Dictionary:
 		"events_sent": events_sent,
 		"new_errors": new_errors,
 		"game_still_running": still_running,
+		"batches_unconfirmed": batches_unconfirmed,
+		"stopped_early": stopped_early,
+		"input_cancelled": input_cancelled,
 	})
+
+
+## Asks the game to drop this run's queued input (cancel_group) and deliver
+## the releases it still owed. Returns true once the game confirms.
+func _cancel_game_input_queue(group: String) -> bool:
+	var ack_id := "%d_%d" % [OS.get_process_id(), Time.get_ticks_usec()]
+	var sent: Dictionary = await write_input_payload({"cancel_input_queue": true, "ack_id": ack_id, "cancel_group": group})
+	if not sent.is_empty():
+		return false
+	return await _await_input_ack(ack_id, 5.0)
+
+
+## Waits for the game's completion ack of an input payload (see
+## mcp_input_service.gd). Returns false on timeout; the ack file is removed.
+func _await_input_ack(ack_id: String, timeout_sec: float) -> bool:
+	var path := "user://mcp_input_ack_%s" % ack_id
+	var deadline := Time.get_ticks_msec() + int(timeout_sec * 1000.0)
+	while not FileAccess.file_exists(path) and Time.get_ticks_msec() < deadline:
+		await get_tree().create_timer(0.02).timeout
+	if not FileAccess.file_exists(path):
+		return false
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	return true
 
 
 func _get_test_report(params: Dictionary) -> Dictionary:
@@ -421,16 +492,13 @@ func _execute_input_step(step: Dictionary) -> Dictionary:
 	else:
 		return {"error": "Input step requires 'action' or 'keycode'"}
 
-	var json := JSON.stringify({
+	var sent: Dictionary = await write_input_payload({
 		"sequence_events": events,
 		"frame_delay": int(step.get("frame_delay", 1)),
 	})
-	await await_input_payload_consumed("user://mcp_input_commands")
-	var file := FileAccess.open("user://mcp_input_commands", FileAccess.WRITE)
-	if file == null:
-		return {"error": "Failed to write input commands"}
-	file.store_string(json)
-	file.close()
+	if not sent.is_empty():
+		var err_info: Variant = sent.get("error")
+		return {"error": str((err_info as Dictionary).get("message", "Failed to write input commands")) if err_info is Dictionary else "Failed to write input commands"}
 
 	return {"sent": true, "event_count": events.size()}
 
@@ -501,70 +569,12 @@ func _execute_assert_step(step: Dictionary) -> Dictionary:
 # ── IPC Helper ────────────────────────────────────────────────────────────────
 
 func _send_game_command(command: String, params: Dictionary = {}, timeout_sec: float = 5.0) -> Dictionary:
-	var ei := get_editor()
-	if not ei.is_playing_scene():
-		return error(-32000, "No scene is currently playing", {"suggestion": "Use play_scene first"})
-
-	var user_dir := get_game_user_dir()
-	var request_path := user_dir + "/mcp_game_request"
-	var response_path := user_dir + "/mcp_game_response"
-
-	# Clean stale response
-	if FileAccess.file_exists(response_path):
-		DirAccess.remove_absolute(response_path)
-
-	# Write request
-	var request_data := JSON.stringify({"command": command, "params": params})
-	var req := FileAccess.open(request_path, FileAccess.WRITE)
-	if req == null:
-		return error_internal("Could not create game request file")
-	req.store_string(request_data)
-	req.close()
-
-	# Poll for response
-	var attempts := int(timeout_sec / 0.1)
-	while attempts > 0:
-		await get_tree().create_timer(0.1).timeout
-		if FileAccess.file_exists(response_path):
-			break
-		# Check if game is still running
-		if not ei.is_playing_scene():
-			if FileAccess.file_exists(request_path):
-				DirAccess.remove_absolute(request_path)
-			return error(-32000, "Game stopped during command execution")
-		attempts -= 1
-
-	if not FileAccess.file_exists(response_path):
-		# Try to auto-resume the debugger
-		if ei.is_playing_scene():
-			try_debugger_continue()
-			for _retry in 20:
-				await get_tree().create_timer(0.1).timeout
-				if FileAccess.file_exists(response_path):
-					break
-
-	if not FileAccess.file_exists(response_path):
-		if FileAccess.file_exists(request_path):
-			DirAccess.remove_absolute(request_path)
-		return build_timeout_error(timeout_sec)
-
-	# Read response
-	var file := FileAccess.open(response_path, FileAccess.READ)
-	if file == null:
-		return error_internal("Could not read game response file")
-	var text := file.get_as_text()
-	file.close()
-	DirAccess.remove_absolute(response_path)
-
-	var parsed = JSON.parse_string(text)
-	if parsed == null or not parsed is Dictionary:
-		return error_internal("Invalid response JSON from game")
-
-	if parsed.has("error"):
-		return error(-32000, str(parsed["error"]))
-
-	return success(parsed)
-
+	# Delegates to the shared helper in base_command.gd, which serialises game
+	# commands (one request/response file pair) and tags each request with an
+	# id. This file used to carry its own copy without either, so a command
+	# from another file could overwrite a running capture's request or take
+	# its reply.
+	return await send_game_command(command, params, timeout_sec)
 
 func _set_game_speed(params: Dictionary) -> Dictionary:
 	## Read or set Engine.time_scale in the running game. With `scale` omitted

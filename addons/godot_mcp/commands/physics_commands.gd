@@ -771,11 +771,15 @@ func _get_physics_engine_info(dim: String) -> Dictionary:
 	var version: Dictionary = Engine.get_version_info()
 	var raw_3d := str(ProjectSettings.get_setting("physics/3d/physics_engine", "DEFAULT"))
 	var raw_2d := str(ProjectSettings.get_setting("physics/2d/physics_engine", "DEFAULT"))
-	var effective_3d := raw_3d
-	if raw_3d == "DEFAULT" or raw_3d.is_empty():
+	# get_setting() ignores feature overrides such as physics_engine.windows;
+	# the engine picks the value with overrides applied for this platform.
+	var over_3d := str(ProjectSettings.get_setting_with_override("physics/3d/physics_engine"))
+	var over_2d := str(ProjectSettings.get_setting_with_override("physics/2d/physics_engine"))
+	var effective_3d := over_3d
+	if over_3d == "DEFAULT" or over_3d.is_empty() or over_3d == "<null>":
 		effective_3d = "GodotPhysics3D"
-	var effective_2d := raw_2d
-	if raw_2d == "DEFAULT" or raw_2d.is_empty():
+	var effective_2d := over_2d
+	if over_2d == "DEFAULT" or over_2d.is_empty() or over_2d == "<null>":
 		effective_2d = "GodotPhysics2D"
 	var info := {
 		"godot_version": version.get("string", ""),
@@ -783,7 +787,8 @@ func _get_physics_engine_info(dim: String) -> Dictionary:
 		"3d_effective": effective_3d,
 		"2d_setting": raw_2d,
 		"2d_effective": effective_2d,
-		"note": "Changing physics/*/physics_engine only takes effect after restarting the editor and the game. DEFAULT resolves to Godot Physics on 4.5-4.7; projects created by the 4.6+ editor store 'Jolt Physics' explicitly.",
+		"platform": OS.get_name(),
+		"note": "Changing physics/*/physics_engine only takes effect after restarting the editor and the game. DEFAULT resolves to Godot Physics on 4.5-4.7; projects created by the 4.6+ editor store 'Jolt Physics' explicitly. *_effective applies feature overrides (e.g. physics_engine.windows) for the platform the editor runs on; an export for another platform may differ.",
 	}
 	if not dim.is_empty():
 		info["node_dimension"] = dim

@@ -10,6 +10,8 @@ enum State { IDLE, CAPTURING_FRAMES, MONITORING, RECORDING, MOVING_TO, WATCHING_
 var _state := State.IDLE
 var _pending_command: bool = false  # Crash recovery flag
 var _request_id: String = ""  # Echoed back so the editor can correlate replies
+## pid of the editor that sent the current request, echoed in the response.
+var _request_editor_pid := 0
 
 # Frame capture state
 var _capture_frames_remaining: int = 0
@@ -48,6 +50,10 @@ var _moveto_camera_pivot: Node3D = null
 var _moveto_arrival_radius: float = 1.5
 var _moveto_timeout: float = 15.0
 var _moveto_elapsed: float = 0.0
+## Wall-clock start of the current move_to; its timeout must not stretch
+## with Engine.time_scale (set_game_speed), or a slowed game keeps the
+## injected movement keys held long after the editor has given up.
+var _moveto_started_ms: int = 0
 var _moveto_run: bool = false
 var _moveto_look_at: bool = true
 var _moveto_keys_held: Array = []  # Track injected keys for guaranteed release
@@ -115,10 +121,19 @@ func _handle_request() -> void:
 	# Echoed back with the response so the editor can tell its own reply from
 	# a late one belonging to a command that already timed out.
 	_request_id = str(parsed.get("request_id", ""))
+	_request_editor_pid = int(parsed.get("editor_pid", 0)) if (parsed.get("editor_pid") is int or parsed.get("editor_pid") is float) else 0
 
 	var command: String = parsed.get("command", "")
 	var raw_params: Variant = parsed.get("params", {})
 	var params: Dictionary = raw_params if raw_params is Dictionary else {}
+
+	# The editor stops waiting at _mcp_expires_unix. A request read after
+	# that (the game was stalled) must not run: nobody gets its result, and
+	# input-injecting commands would act on their own.
+	var expires: Variant = params.get("_mcp_expires_unix")
+	if (expires is float or expires is int) and Time.get_unix_time_from_system() > float(expires):
+		_write_response({"error": "Request expired before the game could handle it"})
+		return
 
 	match command:
 		"get_scene_tree":
@@ -1373,9 +1388,17 @@ func _cmd_move_to(params: Dictionary) -> void:
 	# Read params
 	_moveto_arrival_radius = float(params.get("arrival_radius", 1.5))
 	_moveto_timeout = float(params.get("timeout", 15.0))
+	# Finish (and release the movement keys) before the editor stops
+	# waiting; it may have spent part of its budget queued behind another
+	# game command.
+	var expires: Variant = params.get("_mcp_expires_unix")
+	if expires is float or expires is int:
+		var left := float(expires) - Time.get_unix_time_from_system()
+		_moveto_timeout = minf(_moveto_timeout, maxf(left - 1.5, 0.5))
 	_moveto_run = bool(params.get("run", false))
 	_moveto_look_at = bool(params.get("look_at_target", true))
 	_moveto_elapsed = 0.0
+	_moveto_started_ms = Time.get_ticks_msec()
 	_moveto_keys_held.clear()
 
 	# Check if already at target
@@ -1409,7 +1432,7 @@ func _process_move_to(delta: float) -> void:
 		_handle_request()
 		return
 
-	_moveto_elapsed += delta
+	_moveto_elapsed = (Time.get_ticks_msec() - _moveto_started_ms) / 1000.0
 
 	# Timeout check
 	if _moveto_elapsed >= _moveto_timeout:
@@ -1638,14 +1661,38 @@ func _reconstruct_event(data: Dictionary) -> InputEvent:
 
 func _write_response(data: Dictionary) -> void:
 	_pending_command = false
-	if not _request_id.is_empty():
+	if not _request_id.is_empty() or _request_editor_pid != 0:
 		data = data.duplicate()
-		data["request_id"] = _request_id
+		if not _request_id.is_empty():
+			data["request_id"] = _request_id
+		# Lets cleanup in an editor tell its own pending reply from another's.
+		if _request_editor_pid != 0:
+			data["editor_pid"] = _request_editor_pid
 	var json := JSON.stringify(data)
-	var file := FileAccess.open(RESPONSE_PATH, FileAccess.WRITE)
+	# Publish atomically (temp file + rename) so the editor, which polls for
+	# this file, never reads it half-written.
+	var tmp := "%s.tmp_%d" % [RESPONSE_PATH, Time.get_ticks_usec()]
+	var file := FileAccess.open(tmp, FileAccess.WRITE)
 	if file:
 		file.store_string(json)
 		file.close()
+		# Publish under the channel lock the editor's cleanup uses (see
+		# base_command.gd), so a cleanup that has verified ownership cannot
+		# then delete this new response. Bounded wait; publish anyway after
+		# it, since an unanswered editor is worse than a rare race.
+		var lock_dir := ProjectSettings.globalize_path(RESPONSE_PATH + ".lock")
+		var locked := false
+		for _i in 50:
+			if DirAccess.make_dir_absolute(lock_dir) == OK:
+				locked = true
+				break
+			OS.delay_msec(2)
+		if FileAccess.file_exists(RESPONSE_PATH):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(RESPONSE_PATH))
+		if DirAccess.rename_absolute(ProjectSettings.globalize_path(tmp), ProjectSettings.globalize_path(RESPONSE_PATH)) != OK:
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
+		if locked:
+			DirAccess.remove_absolute(lock_dir)
 
 
 # ── assert_node_state ─────────────────────────────────────────────────────────

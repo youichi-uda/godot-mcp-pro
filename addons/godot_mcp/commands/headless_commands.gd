@@ -84,7 +84,7 @@ func _run_headless_script(params: Dictionary) -> Dictionary:
 	return await _run_headless(params, ["--script", script_path], script_path)
 
 
-func _run_headless(params: Dictionary, target_args: Array, target: String, max_timeout_sec: float = _MAX_TIMEOUT_SEC) -> Dictionary:
+func _run_headless(params: Dictionary, target_args: Array, target: String, max_timeout_sec: float = _MAX_TIMEOUT_SEC, on_started: Callable = Callable()) -> Dictionary:
 	var godot_bin := OS.get_executable_path()
 	if godot_bin.is_empty():
 		return error_internal("Could not determine the Godot executable path")
@@ -135,8 +135,7 @@ func _run_headless(params: Dictionary, target_args: Array, target: String, max_t
 				return error_invalid_params(
 					"Argument %s contains a double quote, which a Windows batch runner cannot represent." % arg
 				)
-			if arg.contains("
-") or arg.contains(""):
+			if arg.contains("\n") or arg.contains("\r"):
 				return error_invalid_params(
 					"Argument %s contains a line break, which would terminate the Windows batch command line." % arg
 				)
@@ -156,6 +155,8 @@ func _run_headless(params: Dictionary, target_args: Array, target: String, max_t
 	if pid <= 0:
 		paths.cleanup()
 		return error_internal("Failed to start headless Godot process")
+	if on_started.is_valid():
+		on_started.call(pid)
 
 	# Measure against the clock rather than counting poll ticks: a stalled
 	# editor frame makes a tick longer than _POLL_INTERVAL_SEC, and an

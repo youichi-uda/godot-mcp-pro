@@ -29,6 +29,7 @@ var auto_dismiss_dialogs: bool = false
 # up temp files on exit would delete the live editor's in-flight IPC files,
 # which live in the same user:// directory.
 var _inert := false
+var _was_playing := false
 # Track which autoloads THIS session injected (vs project-owned)
 var _session_injected_autoloads: Array[String] = []
 
@@ -40,6 +41,10 @@ func _enter_tree() -> void:
 		set_process(false)
 		return
 	_register_project_settings()
+	# Locks held by handlers of a previous plugin instance (disabled or
+	# reloaded mid-command) would otherwise stay held.
+	preload("res://addons/godot_mcp/commands/base_command.gd").reset_session_state()
+	preload("res://addons/godot_mcp/commands/export_commands.gd").reset_export_session_state()
 
 	# Create command router
 	command_router = preload("res://addons/godot_mcp/command_router.gd").new()
@@ -85,6 +90,9 @@ func _should_stay_inert() -> bool:
 func _exit_tree() -> void:
 	if _inert:
 		return
+	# A patch export in flight loses its handler with this plugin; stop its
+	# child process and remove its temp files instead of orphaning them.
+	preload("res://addons/godot_mcp/commands/export_commands.gd").abort_active_export()
 	# Remove MCP autoloads and clean up temp files
 	_remove_autoloads()
 	_cleanup_temp_files()
@@ -242,6 +250,14 @@ const _DIALOG_CHECK_INTERVAL: float = 0.5  # Check every 0.5 seconds
 func _process(delta: float) -> void:
 	if _inert:
 		return
+	# When a game stops (MCP stop_scene, the editor's Stop button, a crash),
+	# anything it left unread belongs to that session: remove it so the next
+	# play session cannot pick it up.
+	var playing := EditorInterface.is_playing_scene()
+	if _was_playing and not playing:
+		preload("res://addons/godot_mcp/commands/base_command.gd").bump_play_session()
+		_clear_session_ipc_files()
+	_was_playing = playing
 	# Check if game inspector requested debugger continue
 	var flag_path := OS.get_user_data_dir() + "/mcp_debugger_continue"
 	if FileAccess.file_exists(flag_path):
@@ -323,12 +339,45 @@ func _find_and_dismiss_dialogs(node: Node) -> void:
 		_find_and_dismiss_dialogs(child)
 
 
+func _clear_session_ipc_files() -> void:
+	var dirs: Array = [OS.get_user_data_dir()]
+	var helper: Node = preload("res://addons/godot_mcp/commands/base_command.gd").new()
+	var game_dir: String = helper.call("get_game_user_dir")
+	helper.free()
+	if not dirs.has(game_dir):
+		dirs.append(game_dir)
+	var base_script := preload("res://addons/godot_mcp/commands/base_command.gd")
+	var own_tmp := ".tmp_%d_" % OS.get_process_id()
+	for d: String in dirs:
+		var dir := DirAccess.open(d)
+		if dir == null:
+			continue
+		for f in dir.get_files():
+			if f == "mcp_input_commands" or f == "mcp_game_request":
+				# Only this editor's own: another editor sharing user:// may
+				# have input pending for its still-running game.
+				base_script.remove_ipc_file_if_owned(d.path_join(f))
+			elif (f.begins_with("mcp_input_commands.tmp_") or f.begins_with("mcp_game_request.tmp_")) and f.contains(own_tmp):
+				dir.remove(f)
+
+
 func _cleanup_temp_files() -> void:
 	var user_dir := OS.get_user_data_dir()
+	var base_script := preload("res://addons/godot_mcp/commands/base_command.gd")
 	for filename: String in _MCP_TEMP_FILES:
-		var path := user_dir + "/" + filename
-		if FileAccess.file_exists(path):
-			DirAccess.remove_absolute(path)
+		# Only this editor's own (or unowned legacy) files: another editor
+		# sharing user:// may have input or a request pending right now.
+		base_script.remove_ipc_file_if_owned(user_dir + "/" + filename)
+	# Release acknowledgements the editor stopped waiting for (see
+	# input_commands.gd) are never read; drop any that are left.
+	# Only this editor's own: another editor sharing user:// may be waiting on
+	# its ack right now. Ack ids start with the waiting editor's process id.
+	var dir := DirAccess.open(user_dir)
+	if dir != null:
+		var own_prefix := "mcp_input_ack_%d_" % OS.get_process_id()
+		for f in dir.get_files():
+			if f.begins_with(own_prefix):
+				dir.remove(f)
 	# Also clean up screenshot image
 	var screenshot_path := user_dir + "/mcp_screenshot.png"
 	if FileAccess.file_exists(screenshot_path):

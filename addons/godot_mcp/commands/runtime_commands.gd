@@ -311,68 +311,11 @@ func _watch_signals(params: Dictionary) -> Dictionary:
 
 # ── IPC Helper ────────────────────────────────────────────────────────────────
 
-func _send_game_command(command: String, params: Dictionary, timeout_sec: float = 5.0) -> Dictionary:
-	var ei := get_editor()
-	if not ei.is_playing_scene():
-		return error(-32000, "No scene is currently playing", {"suggestion": "Use play_scene first"})
+func _send_game_command(command: String, params: Dictionary = {}, timeout_sec: float = 5.0) -> Dictionary:
+	# Delegates to the shared helper in base_command.gd, which serialises game
+	# commands (one request/response file pair) and tags each request with an
+	# id. This file used to carry its own copy without either, so a command
+	# from another file could overwrite a running capture's request or take
+	# its reply.
+	return await send_game_command(command, params, timeout_sec)
 
-	var user_dir := get_game_user_dir()
-	var request_path := user_dir + "/mcp_game_request"
-	var response_path := user_dir + "/mcp_game_response"
-
-	# Clean stale response
-	if FileAccess.file_exists(response_path):
-		DirAccess.remove_absolute(response_path)
-
-	# Write request
-	var request_data := JSON.stringify({"command": command, "params": params})
-	var req := FileAccess.open(request_path, FileAccess.WRITE)
-	if req == null:
-		return error_internal("Could not create game request file")
-	req.store_string(request_data)
-	req.close()
-
-	# Poll for response
-	var attempts := int(timeout_sec / 0.1)
-	while attempts > 0:
-		await get_tree().create_timer(0.1).timeout
-		if FileAccess.file_exists(response_path):
-			break
-		# Check if game is still running
-		if not ei.is_playing_scene():
-			if FileAccess.file_exists(request_path):
-				DirAccess.remove_absolute(request_path)
-			return error(-32000, "Game stopped during command execution")
-		attempts -= 1
-
-	if not FileAccess.file_exists(response_path):
-		# Try to auto-resume the debugger (runtime error may have paused the game)
-		if ei.is_playing_scene():
-			try_debugger_continue()
-			# Give the game a chance to recover and write a response
-			for _retry in 20:
-				await get_tree().create_timer(0.1).timeout
-				if FileAccess.file_exists(response_path):
-					break
-
-	if not FileAccess.file_exists(response_path):
-		if FileAccess.file_exists(request_path):
-			DirAccess.remove_absolute(request_path)
-		return build_timeout_error(timeout_sec)
-
-	# Read response
-	var file := FileAccess.open(response_path, FileAccess.READ)
-	if file == null:
-		return error_internal("Could not read game response file")
-	var text := file.get_as_text()
-	file.close()
-	DirAccess.remove_absolute(response_path)
-
-	var parsed = JSON.parse_string(text)
-	if parsed == null or not parsed is Dictionary:
-		return error_internal("Invalid response JSON from game")
-
-	if parsed.has("error"):
-		return error(-32000, str(parsed["error"]))
-
-	return success(parsed)

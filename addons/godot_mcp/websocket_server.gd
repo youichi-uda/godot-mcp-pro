@@ -391,6 +391,10 @@ func _execute_notification(method: String, params: Dictionary) -> void:
 
 func _execute_command(source_port: int, id: Variant, method: String, params: Dictionary) -> void:
 	var cmd_result: Dictionary = await command_router.execute(method, params)
+	# A command can outlive the plugin (restart_editor, plugin disabled while
+	# it awaited); there is no connection left to answer on.
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
 	if cmd_result.has("error"):
 		var err_data: Variant = cmd_result["error"]
 		_send_response(source_port, id, null, err_data)

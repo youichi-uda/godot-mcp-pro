@@ -752,8 +752,10 @@ func _add_gridmap(params: Dictionary) -> Dictionary:
 
 ## ─── 7. get_gridmap_info ─────────────────────────────────────────────────
 
-## Parses a cell-space AABB given as {position:{x,y,z}, size:{x,y,z}} or
-## {min:{x,y,z}, max:{x,y,z}} (both inclusive of the min corner). Returns
+## Parses cell bounds given as {min, max} (both corners inclusive) or
+## {position, size} (half-open like Godot's AABB: size cells from position,
+## so size (1,1,1) is exactly one cell). Returned as an AABB whose end is the
+## inclusive last cell, which is what _cell_in_bounds expects. Returns
 ## [aabb_or_null, error_or_null].
 func _parse_cell_bounds(value: Variant) -> Array:
 	if not value is Dictionary:
@@ -765,7 +767,11 @@ func _parse_cell_bounds(value: Variant) -> Array:
 		var mx := _parse_vector3_param(d, "max", zero)
 		return [AABB(mn, mx - mn).abs(), null]
 	if d.has("position") and d.has("size"):
-		return [AABB(_parse_vector3_param(d, "position", zero), _parse_vector3_param(d, "size", zero)).abs(), null]
+		var pos := _parse_vector3_param(d, "position", zero)
+		var size := _parse_vector3_param(d, "size", zero)
+		if size.x < 1 or size.y < 1 or size.z < 1:
+			return [null, error_invalid_params("'bounds.size' must be at least 1 cell on every axis")]
+		return [AABB(pos, size - Vector3.ONE), null]
 	return [null, error_invalid_params("'bounds' needs either position+size or min+max")]
 
 
@@ -913,14 +919,21 @@ func _get_gridmap_info(params: Dictionary) -> Dictionary:
 				"octants": octant_list,
 				"octants_truncated": octants.size() > octant_list.size(),
 			}
-			if has_bounds and gridmap.has_method("get_used_octants_in_bounds"):
-				# The engine's bounds query takes GridMap-local space, so convert
-				# the inclusive cell bounds into local-space extents first.
-				var cs := gridmap.cell_size
-				var local := AABB(bounds.position * cs, (bounds.size + Vector3.ONE) * cs)
-				var in_bounds: Array = gridmap.call("get_used_octants_in_bounds", local)
+			if has_bounds:
+				# Filter the used octants here instead of calling the engine's
+				# get_used_octants_in_bounds(): that walks every octant
+				# coordinate inside the bounds volume, so a huge box froze the
+				# editor even on an empty map. Octant o covers cells
+				# o*size .. o*size+size-1 on each axis.
+				var osz := int(gridmap.cell_octant_size)
+				var bmin := Vector3i(bounds.position)
+				var bmax := Vector3i(bounds.position + bounds.size)
 				var ib: Array = []
-				for oc: Vector3i in in_bounds:
+				for oc: Vector3i in octants:
+					var lo := oc * osz
+					var hi := lo + Vector3i(osz - 1, osz - 1, osz - 1)
+					if hi.x < bmin.x or lo.x > bmax.x or hi.y < bmin.y or lo.y > bmax.y or hi.z < bmin.z or lo.z > bmax.z:
+						continue
 					if ib.size() >= max_octants:
 						break
 					ib.append(_vec3i_dict(oc))

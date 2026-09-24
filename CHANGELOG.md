@@ -4,6 +4,39 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.17.1 — 2026-09-25
+
+**Patch** — v1.17.0 was published on GitHub only; this is the first store release of the 1.17 line and includes everything below plus all of v1.17.0. It is the result of an adversarial review of everything changed since v1.16.0, run with the Codex CLI in 39 rounds until it returned no findings. 98 findings were fixed; each was reproduced or checked against the engine, and verified live on Godot 4.7.2 where it could be. Every addon script still parses on 4.4.1, 4.5.1, 4.6.2 and 4.7.2.
+
+### Fixed — Security
+- **Windows command injection through a bare line feed.** The line-break guard for headless-runner arguments and export paths compared against literal CR/LF bytes that had been embedded in the string literals, so a scene path containing a bare LF could run a second command in the generated batch file. Shipped in v1.17.0.
+- **An input acknowledgement id could name any `user://` file.** `simulate_sequence` forwarded caller-supplied `ack_id`/`hold_sec`, and the game wrote `user://mcp_input_ack_<id>`; an id such as `x/../save.dat` overwrote that file. Ids are now validated in the game and stripped from caller events.
+
+### Fixed — Data safety
+- **`export_patch_pck` never destroys an existing pack.** It exports to a temp file, validates the result (header, file directory and every stored file's extent, including encrypted files' padding; Godot 4.4 exits 0 after a failed write, e.g. a full disk) and only then replaces the destination, keeping the old one until the new one is in place. It refuses destinations that are a base pack by content (junctions, symlinks), passes the validated base list explicitly, serialises exports, and never lets an unverifiable (encrypted-directory) pack replace an existing file.
+- **Script edits left by a failed save are protected.** Godot clears a script's modified flag even when writing it fails (read-only file) and after implicit saves (scene save, play). Such buffers are now tracked; `reload_open_scripts`, forced `edit_script`/`create_script` syncs and `close_script` will not discard them, and `get_unsaved_state` reports `buffers_differ_from_disk`.
+- **`save_all` reports what actually reached disk.** It detects scripts and scenes that did not save (read-only files, unwritable directories, built-in scripts in `.tscn` and `.scn`), keeps reporting a failed scene until its file changes or it is closed, refuses combinations Godot cannot honour (scripts-only with built-in scripts open, scenes-only with modified buffers), and reports scripts Godot rewrote through save-time formatting.
+
+### Fixed — Input and runtime
+- **Input is delivered once, in order, and to the right game.** All input goes through one writer: it never overwrites unread input, publishes atomically, carries its editor's id, and is refused once its play session has ended (stop, restart, or saving, which stops the game). The game queues payloads with their own timing, never sends a sequence's first two events in one frame, and acknowledges only after events are delivered. Timed key holds are measured from delivery and released on a later frame.
+- **Game commands share one serialised, deadline-bound channel.** Runtime and test commands used private copies without the lock; requests and responses are now atomic, carry absolute expiries, give up when the game restarts, and only read or delete this editor's own files.
+- **`run_stress_test`** applies backpressure, stops when the game falls behind, cancels only its own queued input (releasing what it pressed), and fits inside the caller's timeout; `run_test_scenario` counts unsent input as an error.
+- **`move_to`**, `watch_signals` and `wait_for_node` get server timeouts that outlast the addon's own; `move_to` times out on the wall clock and within the caller's budget.
+
+### Fixed — Other
+- `get_gridmap_info`: no longer freezes on huge bounds; `{position,size}` bounds are half-open like an AABB.
+- Blend spaces: bounds applied without Godot's clamping order problem, 32-bit tolerant verification, the 64-point limit enforced, generated point names that survive reload.
+- `get_collision_info` reports the physics engine with platform overrides applied.
+- `play_scene` validates the scene before ending the running session and reports failure when nothing starts; `get_safe_dir_name` completes the port of Godot's rules (`..` -> `twodots`, trailing periods).
+- The plugin stays inert during command-line exports, clears static locks on start, and aborts an in-flight patch export (killing its child) when it exits.
+
+### Known limitations
+- A safe-save whose final rename fails after Godot reports the scene saved (e.g. EPERM on Linux sticky directories) is not detected.
+- Restarting a game with the editor's own Run button while simulated input is unread cannot be observed by a plugin.
+- Several editors or games sharing one `user://` directory at the same time get best-effort isolation only (ownership stamps, cross-process locks, no-clobber publication).
+
+---
+
 ## v1.17.0 — 2026-09-24
 
 **Minor** — Godot 4.6 and 4.7 support work: nine new tools and several upgrades built on the new engine APIs, plus fixes for every open bug report and two community pull requests. Every addon script parses on Godot 4.4.1, 4.5.1, 4.6.2 and 4.7.2; the new features were exercised live in the editor on 4.7.2, with a smoke test on 4.4.1. APIs that only exist on newer Godot are looked up at runtime, so the addon still loads on 4.4 and those features answer with an error naming the version they need.

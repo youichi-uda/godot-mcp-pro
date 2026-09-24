@@ -213,6 +213,26 @@ func _add_scene_instance(params: Dictionary) -> Dictionary:
 func _play_scene(params: Dictionary) -> Dictionary:
 	var mode: String = optional_string(params, "mode", "main")  # "main", "current", or path
 
+	# Validate first: a bad request must not touch the running game's
+	# pending input.
+	if mode != "main" and mode != "current":
+		if not FileAccess.file_exists(mode):
+			return error_not_found("Scene file '%s'" % mode)
+		var ext := mode.get_extension().to_lower()
+		if ext != "tscn" and ext != "scn":
+			return error_invalid_params("'%s' is not a scene file (.tscn/.scn)" % mode)
+
+	# Playing while a game runs restarts it synchronously, so the plugin never
+	# sees a stop. End the old session here: invalidate waiting writers and
+	# remove the input/requests it left unread.
+	if EditorInterface.is_playing_scene():
+		bump_play_session()
+		_cleanup_input_files()
+		_cleanup_inspector_files()
+
+	# Starting a game can save scenes and scripts first ("save before
+	# running"); protect buffers against a failed implicit save.
+	protect_script_buffers_before_save()
 	match mode:
 		"main":
 			EditorInterface.play_main_scene()
@@ -224,6 +244,11 @@ func _play_scene(params: Dictionary) -> Dictionary:
 				return error_not_found("Scene file '%s'" % mode)
 			EditorInterface.play_custom_scene(mode)
 
+	# Report what actually happened: a scene that fails to launch leaves
+	# nothing playing.
+	var playing := EditorInterface.is_playing_scene()
+	if not playing:
+		return error(-32000, "The scene did not start", {"mode": mode, "suggestion": "Check the Output panel for the reason (e.g. no main scene set, or a script error)."})
 	return success({"playing": true, "mode": mode})
 
 
@@ -231,6 +256,10 @@ func _stop_scene(_params: Dictionary) -> Dictionary:
 	if not EditorInterface.is_playing_scene():
 		return success({"stopped": false, "message": "No scene is currently playing"})
 
+	# Invalidate waiting writers now: a play_scene queued right behind this
+	# call would otherwise start a new game before the plugin's next frame
+	# notices the stop, and they would publish into it.
+	bump_play_session()
 	EditorInterface.stop_playing_scene()
 
 	# Clean up temp files
@@ -271,6 +300,10 @@ func _save_scene(params: Dictionary) -> Dictionary:
 
 	var err: int
 	var save_method: String
+	# Saving a scene also saves modified script buffers; protect them in case
+	# that write fails (see protect_script_buffers_before_save).
+	protect_script_buffers_before_save()
+	var was_playing := EditorInterface.is_playing_scene()
 	if root.scene_file_path.is_empty() or not paths_match(normalize_project_path(root.scene_file_path), normalized_path):
 		EditorInterface.save_scene_as(normalized_path)
 		# save_scene_as() returns nothing, so success was simply assumed and
@@ -280,6 +313,8 @@ func _save_scene(params: Dictionary) -> Dictionary:
 	else:
 		err = EditorInterface.save_scene()
 		save_method = "EditorInterface.save_scene"
+	# If saving stopped a running game, end its session (see handle_implicit_stop).
+	handle_implicit_stop(was_playing)
 	if err != OK:
 		return error_internal("Failed to save scene via %s: %s" % [save_method, error_string(err)])
 
@@ -347,24 +382,22 @@ func _cleanup_screenshot_files() -> void:
 	var user_dir := get_game_user_dir()
 	var request_path := user_dir + "/mcp_screenshot_request"
 	var screenshot_path := user_dir + "/mcp_screenshot.png"
-	if FileAccess.file_exists(request_path):
-		DirAccess.remove_absolute(request_path)
+	remove_ipc_file_if_owned(request_path)
 	if FileAccess.file_exists(screenshot_path):
 		DirAccess.remove_absolute(screenshot_path)
 
 
 func _cleanup_input_files() -> void:
 	var user_dir := get_game_user_dir()
-	var commands_path := user_dir + "/mcp_input_commands"
-	if FileAccess.file_exists(commands_path):
-		DirAccess.remove_absolute(commands_path)
+	# The input writer uses this editor's user:// (see write_input_payload);
+	# check both it and the game's directory, removing only our own payload.
+	remove_ipc_file_if_owned(INPUT_COMMANDS_PATH)
+	remove_ipc_file_if_owned(user_dir + "/mcp_input_commands")
 
 
 func _cleanup_inspector_files() -> void:
 	var user_dir := get_game_user_dir()
 	var request_path := user_dir + "/mcp_game_request"
 	var response_path := user_dir + "/mcp_game_response"
-	if FileAccess.file_exists(request_path):
-		DirAccess.remove_absolute(request_path)
-	if FileAccess.file_exists(response_path):
-		DirAccess.remove_absolute(response_path)
+	remove_ipc_file_if_owned(request_path)
+	remove_ipc_file_if_owned(response_path)

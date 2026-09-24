@@ -118,6 +118,60 @@ const _PATCH_MAX_TIMEOUT_SEC := 1800.0
 const _PATCH_MAX_OUTPUT_CHARS := 6000
 ## Keeps the runner's user:// temp files apart from run_headless_* runs.
 static var _patch_run_seq := 0
+## One patch export at a time per editor: Godot 4.4's packer writes through
+## a fixed temporary file name in the editor's temp directory, so two
+## concurrent exports could interleave into a corrupt pack.
+static var _patch_export_busy := false
+
+
+## Called when the plugin starts: a handler freed mid-export (plugin disabled
+## or editor restarting) never cleared the static flag, which would block
+## every later export for the rest of the editor session.
+static func reset_export_session_state() -> void:
+	_patch_export_busy = false
+
+
+## Runner process of the running (or abandoned) patch export. Kept across
+## plugin lifetimes: disabling the plugin frees the handler but not the OS
+## process, and a second export must not overlap it (Godot 4.4's packer uses
+## a fixed temp file name).
+static var _patch_export_pid := 0
+
+
+static func _patch_export_running() -> bool:
+	if _patch_export_busy:
+		return true
+	return _patch_export_pid > 0 and OS.is_process_running(_patch_export_pid)
+
+
+static func _set_patch_export_pid(pid: int) -> void:
+	_patch_export_pid = pid
+
+
+## Temp output of the running export, removed by abort_active_export().
+static var _patch_export_temp_abs := ""
+
+
+## Called when the plugin exits. The handler awaiting the export is freed
+## with the plugin, taking its timeout and cleanup with it, so end the child
+## process tree here and remove what it would have left behind.
+static func abort_active_export() -> void:
+	if _patch_export_pid > 0 and OS.is_process_running(_patch_export_pid):
+		var killer: Node = _HEADLESS_COMMANDS.new()
+		killer.call("_kill_process_tree", _patch_export_pid)
+		killer.free()
+	_patch_export_pid = 0
+	_patch_export_busy = false
+	if not _patch_export_temp_abs.is_empty():
+		DirAccess.remove_absolute(_patch_export_temp_abs)
+		_patch_export_temp_abs = ""
+	# Runner files of patch exports use run counters from 900000 up.
+	var dir := DirAccess.open("user://")
+	if dir != null:
+		var prefix := "mcp_headless_%d_9" % OS.get_process_id()
+		for f in dir.get_files():
+			if f.begins_with(prefix):
+				dir.remove(f)
 
 
 func _export_patch_pck(params: Dictionary) -> Dictionary:
@@ -194,21 +248,67 @@ func _export_patch_pck(params: Dictionary) -> Dictionary:
 	if unsaved is Array and not (unsaved as Array).is_empty():
 		warnings.append("Unsaved scenes are exported as last saved on disk: %s. Call save_scene first to include the edits." % ", ".join(PackedStringArray(unsaved)))
 
-	var args: Array = ["--export-patch", preset["name"], output_abs]
-	if not using_preset_patches:
-		args.append("--patches")
-		args.append(",".join(PackedStringArray(patches)))
+	# Godot opens the destination for writing before it knows whether there
+	# is anything to export, so a failed or no-change export used to replace
+	# an existing, valid patch with a stub. Export to a temp file next to it
+	# and move it into place only on success.
+	var temp_abs := output_abs.get_base_dir().path_join(".%s.mcp-%d-%d.tmp.pck" % [output_abs.get_file().get_basename(), OS.get_process_id(), Time.get_ticks_usec()])
+	# Path comparison cannot see through junctions, symlinks or other aliases,
+	# so also refuse when the file at output_path IS one of the base packs by
+	# content: overwriting it would replace the baseline with its own delta.
+	var base_list: Array = patches.duplicate()
+	if using_preset_patches:
+		for entry: Variant in preset["patches"]:
+			var base_abs2 := _to_absolute_path(str(entry))
+			base_list.append(base_abs2 if not base_abs2.is_empty() else ProjectSettings.globalize_path("res://").path_join(str(entry)))
+	var alias_of := _find_same_content(output_abs, base_list)
+	if not alias_of.is_empty():
+		return error_invalid_params(
+			"output_path '%s' holds the same bytes as base pack '%s' (the same file through a link, or a copy of it); the patch must go to a different file" % [output_path, alias_of]
+		)
+	var args: Array = ["--export-patch", preset["name"], temp_abs]
+	# Always pass the validated list explicitly, even when it came from the
+	# preset: without --patches Godot re-reads the preset when the child
+	# starts, and an edit to its Patches list while this call waited would
+	# export against (and possibly overwrite) a pack nobody checked.
+	for bp in base_list:
+		if str(bp).contains(",") or _has_cli_unsafe_chars(str(bp)):
+			return error_invalid_params("Base pack path '%s' contains a comma, quote or line break, which cannot be passed to Godot's --patches" % bp)
+	args.append("--patches")
+	args.append(",".join(PackedStringArray(base_list)))
 
 	var timeout_sec: float = clampf(optional_float(params, "timeout_sec", _PATCH_DEFAULT_TIMEOUT_SEC), 10.0, _PATCH_MAX_TIMEOUT_SEC)
 	var started_unix := Time.get_unix_time_from_system()
 
+	# Measured on the monotonic clock: a stalled editor (a long
+	# execute_editor_script, a modal dialog) delays timers, and counting timer
+	# ticks would then leave the export almost its whole budget after the
+	# caller had already timed out.
+	var deadline_ms := Time.get_ticks_msec() + int(timeout_sec * 1000.0)
+	while _patch_export_running() and Time.get_ticks_msec() < deadline_ms:
+		await get_tree().create_timer(0.1).timeout
+	if _patch_export_running():
+		return error(-32000, "Another export_patch_pck is still running in this editor", {"suggestion": "Retry once it finishes; patch exports are serialised."})
+	_patch_export_busy = true
 	var runner: Node = _HEADLESS_COMMANDS.new()
 	runner.editor_plugin = editor_plugin
 	_patch_run_seq += 1
 	runner.set("_run_counter", 900000 + _patch_run_seq)
 	add_child(runner)
-	var run: Dictionary = await runner._run_headless({"timeout_sec": timeout_sec}, args, "export_patch_pck", _PATCH_MAX_TIMEOUT_SEC)
+	# One deadline covers queueing and the export itself; the MCP server's
+	# own timeout is derived from timeout_sec, so the child must not get a
+	# fresh full budget after waiting in the queue.
+	var remaining_sec := (deadline_ms - Time.get_ticks_msec()) / 1000.0
+	if remaining_sec < 5.0:
+		_patch_export_busy = false
+		runner.queue_free()
+		return error(-32000, "Timed out waiting for another export_patch_pck to finish", {"suggestion": "Retry once it finishes, or pass a larger timeout_sec."})
+	_patch_export_temp_abs = temp_abs
+	var run: Dictionary = await runner._run_headless({"timeout_sec": remaining_sec}, args, "export_patch_pck", _PATCH_MAX_TIMEOUT_SEC, _set_patch_export_pid)
 	runner.queue_free()
+	_patch_export_busy = false
+	_patch_export_pid = 0
+	_patch_export_temp_abs = ""
 	if run.has("error"):
 		return run
 	var outcome: Dictionary = run.get("result", {})
@@ -218,12 +318,12 @@ func _export_patch_pck(params: Dictionary) -> Dictionary:
 	if log_text.length() > _PATCH_MAX_OUTPUT_CHARS:
 		log_text = log_text.substr(log_text.length() - _PATCH_MAX_OUTPUT_CHARS)
 
-	var produced := FileAccess.file_exists(output_abs) and FileAccess.get_modified_time(output_abs) >= int(started_unix) - 1
+	var produced := FileAccess.file_exists(temp_abs)
 	var data := {
 		"preset": preset["name"],
 		"platform": preset["platform"],
 		"output_path": output_abs,
-		"patches": patches if not using_preset_patches else preset["patches"],
+		"patches": base_list,
 		"patches_source": "preset" if using_preset_patches else "params",
 		"debug": false,
 		"exit_code": outcome.get("exit_code", -1),
@@ -234,11 +334,59 @@ func _export_patch_pck(params: Dictionary) -> Dictionary:
 	}
 	if not warnings.is_empty():
 		data["warnings"] = warnings
+	var unverified_pack := false
+	var failed := log_text.contains("No files or changes to export") or int(outcome.get("exit_code", -1)) != 0 or bool(outcome.get("timed_out", false)) or not produced
+	if failed:
+		DirAccess.remove_absolute(temp_abs)
+	else:
+		# Replace the destination only now, and never lose it: move the old
+		# pack aside, move the new one in, and roll back if that fails (on
+		# Windows another process holding the temp file blocks the rename).
+		# Godot 4.4's packer ignores failed payload writes (e.g. a full disk)
+		# and still exits 0, so check the pack is structurally complete
+		# before it may replace anything.
+		var pck_problem := pck_structure_problem(temp_abs)
+		if pck_problem == "UNVERIFIABLE":
+			# Encrypted directory: its integrity cannot be checked here. Never
+			# let an unverifiable pack replace an existing one; a new file is
+			# fine (nothing is lost) but is reported as unverified.
+			if FileAccess.file_exists(output_abs):
+				DirAccess.remove_absolute(temp_abs)
+				return error(-32000, "The patch has an encrypted file directory, so its integrity cannot be verified; the existing file at output_path was left untouched", {
+					"suggestion": "Export to a new output_path (an unverified pack never replaces an existing one), then check it and replace the old one yourself.",
+				})
+			unverified_pack = true
+			pck_problem = ""
+		if not pck_problem.is_empty():
+			DirAccess.remove_absolute(temp_abs)
+			return error(-32000, "The exported patch %s; the existing file at output_path was left untouched" % pck_problem, {
+				"suggestion": "Check free disk space where output_path lives, then export again.",
+			})
+		var late_alias := _find_same_content(output_abs, base_list)
+		if not late_alias.is_empty():
+			DirAccess.remove_absolute(temp_abs)
+			return error_invalid_params("output_path now holds the same bytes as base pack '%s'; refusing to replace it" % late_alias)
+		var backup_abs := ""
+		if FileAccess.file_exists(output_abs):
+			backup_abs = temp_abs.get_basename() + ".previous.pck"
+			var bk_err := DirAccess.rename_absolute(output_abs, backup_abs)
+			if bk_err != OK:
+				DirAccess.remove_absolute(temp_abs)
+				return error_internal("Patch exported, but the existing '%s' could not be moved aside to replace it (left untouched): %s" % [output_abs, error_string(bk_err)])
+		var mv_err := DirAccess.rename_absolute(temp_abs, output_abs)
+		if mv_err != OK:
+			var restored := backup_abs.is_empty() or DirAccess.rename_absolute(backup_abs, output_abs) == OK
+			return error_internal("Patch exported to '%s' but could not be moved to '%s': %s. %s" % [
+				temp_abs, output_abs, error_string(mv_err),
+				"The previous pack was restored." if restored else "The previous pack is at '%s'." % backup_abs,
+			])
+		if not backup_abs.is_empty():
+			DirAccess.remove_absolute(backup_abs)
 	if log_text.contains("No files or changes to export"):
 		# Godot treats "nothing differs from the base packs" as a failed export.
 		# Say so plainly instead of reporting an opaque exit code.
 		data["no_changes"] = true
-		data["suggestion"] = "Nothing in the project differs from the base packs, so there is no patch to ship. Change or add files, then export again."
+		data["suggestion"] = "Nothing in the project differs from the base packs, so there is no patch to ship. Change or add files, then export again. Any existing file at output_path was left untouched."
 		return error(-32000, "No patch written: nothing changed since the base packs", data)
 	if int(outcome.get("exit_code", -1)) != 0 or bool(outcome.get("timed_out", false)) or not produced:
 		data["suggestion"] = "Check output_tail. Common causes: a wrong preset name, base packs from another project, or an export already running."
@@ -255,13 +403,101 @@ func _export_patch_pck(params: Dictionary) -> Dictionary:
 	if log_text.length() > 1500:
 		data["output_tail"] = log_text.substr(log_text.length() - 1500)
 	data["note"] = "Exported in release mode: Godot's --export-patch CLI has no debug variant."
+	if unverified_pack:
+		data["integrity_verified"] = false
+		data["warning"] = "The pack's file directory is encrypted, so its completeness could not be checked. Verify it (e.g. load it in a test build) before shipping."
 	return success(data)
+
+
+## Returns the first path in `bases` whose file has exactly the same size and
+## MD5 as `path`, or "" when none does (or `path` does not exist). Used to
+## catch a destination that is a base pack under another name.
+func _find_same_content(path: String, bases: Array) -> String:
+	if not FileAccess.file_exists(path):
+		return ""
+	var size := _file_size(path)
+	var md5 := ""
+	for b: Variant in bases:
+		var bp := str(b)
+		if not FileAccess.file_exists(bp) or _file_size(bp) != size:
+			continue
+		if md5.is_empty():
+			md5 = FileAccess.get_md5(path)
+		if FileAccess.get_md5(bp) == md5:
+			return bp
+	return ""
+
+
+func _file_size(path: String) -> int:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return -1
+	var n := f.get_length()
+	f.close()
+	return n
+
+
+## "" when the file at `path` is a structurally complete Godot pack, else a
+## short reason. Reads the header and the file directory (format 2 as
+## written by Godot 4.0-4.4, 3+ with a directory offset as written by 4.5+)
+## and checks every stored file lies within the pack's data. Offsets are
+## relative to the header's file base, as the packers write them.
+static func pck_structure_problem(path: String) -> String:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return "cannot be opened"
+	var length := f.get_length()
+	if length < 104:
+		return "is too short to be a pack"
+	if f.get_32() != 0x43504447:
+		return "has no pack header"
+	var version := f.get_32()
+	f.get_32()
+	f.get_32()
+	f.get_32()
+	var flags := f.get_32()
+	var file_base := f.get_64()
+	var payload_end := length
+	if version >= 3:
+		var dir_offset := f.get_64()
+		if dir_offset <= 0 or dir_offset >= length:
+			return "is truncated: its file directory lies outside the file"
+		payload_end = dir_offset
+		f.seek(dir_offset)
+	else:
+		f.seek(24 + 8 + 64)
+	if flags & 1:
+		return "UNVERIFIABLE"  # encrypted directory: contents cannot be checked without the key
+	if f.get_position() + 4 > length:
+		return "is truncated: its file directory is incomplete"
+	var count := f.get_32()
+	if count > 1000000:
+		return "has an implausible file count"
+	for _i in count:
+		if f.get_position() + 4 > length:
+			return "is truncated: its file directory is incomplete"
+		var path_len := f.get_32()
+		if path_len > 65536 or f.get_position() + path_len + 36 > length:
+			return "is truncated: its file directory is incomplete"
+		f.seek(f.get_position() + path_len)
+		var ofs := f.get_64()
+		var size := f.get_64()
+		f.seek(f.get_position() + 16)  # md5
+		var file_flags := f.get_32()
+		# An encrypted file (PACK_FILE_ENCRYPTED) is stored as a 40-byte header
+		# (md5, length, iv) followed by its data padded to 16-byte AES blocks,
+		# so it occupies more than its plain size.
+		var stored := size
+		if file_flags & 1:
+			stored = 40 + ((size + 15) / 16) * 16
+		if file_base + ofs + stored > payload_end:
+			return "is truncated: a stored file extends past the end of its data"
+	return ""
 
 
 ## True when a path cannot be carried on the headless runner's command line.
 func _has_cli_unsafe_chars(path: String) -> bool:
-	return path.contains('"') or path.contains("
-") or path.contains("")
+	return path.contains('"') or path.contains("\n") or path.contains("\r")
 
 
 ## res:// and user:// are globalized; an absolute OS path passes through.

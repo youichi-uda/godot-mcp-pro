@@ -679,6 +679,9 @@ func _parse_blend_position(value: Variant, is_2d: bool) -> Array:
 ##   cyclic_length (4.7+), blend_points [{animation, position, name (4.7+)}].
 ## Returns [blend_space, error_or_null]. Nothing 4.7-only is referenced
 ## statically, so the file still parses on 4.5.
+const _MAX_BLEND_POINTS := 64
+
+
 func _build_blend_space(is_2d: bool, params: Dictionary) -> Array:
 	var bs: AnimationRootNode
 	if is_2d:
@@ -686,12 +689,32 @@ func _build_blend_space(is_2d: bool, params: Dictionary) -> Array:
 	else:
 		bs = AnimationNodeBlendSpace1D.new()
 
+	# Godot clamps each bound against the other one's CURRENT value (default
+	# -1..1), so setting min_space=2 before max_space=4 silently produced
+	# 0..4. Validate the pair, apply both twice (the second pass lands every
+	# value once the first has widened the range), then verify.
+	var bounds := {}
 	for key: String in ["min_space", "max_space"]:
 		if params.has(key):
 			var parsed := _parse_blend_position(params[key], is_2d)
 			if parsed[1] != null:
 				return [null, error_invalid_params("'%s': %s" % [key, parsed[1]])]
-			bs.set(key, parsed[0])
+			bounds[key] = parsed[0]
+	if not bounds.is_empty():
+		var want_min: Variant = bounds.get("min_space", bs.get("min_space"))
+		var want_max: Variant = bounds.get("max_space", bs.get("max_space"))
+		var ordered: bool = (want_min.x < want_max.x and want_min.y < want_max.y) if is_2d else (float(want_min) < float(want_max))
+		if not ordered:
+			return [null, error_invalid_params("min_space must be below max_space on every axis (got %s and %s)" % [str(want_min), str(want_max)])]
+		for _pass in 2:
+			bs.set("min_space", want_min)
+			bs.set("max_space", want_max)
+		# Godot stores the bounds as 32-bit floats, so compare approximately.
+		var got_min: Variant = bs.get("min_space")
+		var got_max: Variant = bs.get("max_space")
+		var same: bool = (got_min.is_equal_approx(want_min) and got_max.is_equal_approx(want_max)) if is_2d else (is_equal_approx(float(got_min), float(want_min)) and is_equal_approx(float(got_max), float(want_max)))
+		if not same:
+			return [null, error_internal("Godot kept the blend space range at %s..%s instead of %s..%s" % [str(bs.get("min_space")), str(bs.get("max_space")), str(want_min), str(want_max)])]
 
 	if params.has("sync"):
 		bs.set("sync", optional_bool(params, "sync", false))
@@ -721,6 +744,10 @@ func _build_blend_space(is_2d: bool, params: Dictionary) -> Array:
 		var supports_names := bs.has_method("find_blend_point_by_name")
 		var used_names := {}
 		var points: Array = params["blend_points"]
+		# Godot refuses points beyond MAX_BLEND_POINTS (64, 1D and 2D) with
+		# only an engine error, so the state would be created short.
+		if points.size() > _MAX_BLEND_POINTS:
+			return [null, error_invalid_params("A blend space holds at most %d points; got %d" % [_MAX_BLEND_POINTS, points.size()])]
 		for i in points.size():
 			var pt: Dictionary = points[i]
 			if not pt.has("position"):
@@ -738,14 +765,31 @@ func _build_blend_space(is_2d: bool, params: Dictionary) -> Array:
 			if supports_names:
 				# 4.7 warns about unnamed points; default to the animation name
 				# (or point_<i>) so every point stays addressable by name.
+				# Godot rejects '/', '.', ':' and similar when it reloads the
+				# scene (a different setter than add_blend_point), so a name
+				# like "locomotion/walk" silently became "0" after reload.
+				if not point_name.is_empty() and point_name.validate_node_name() != point_name:
+					return [null, error_invalid_params("blend_points[%d].name '%s' contains characters Godot cannot store in a blend point name (e.g. / . :)" % [i, point_name])]
 				if point_name.is_empty():
-					point_name = anim_name if not anim_name.is_empty() and not used_names.has(anim_name) else "point_%d" % i
+					var base_name := anim_name.validate_node_name().replace("@", "_")
+					if base_name.is_empty():
+						base_name = "point_%d" % i
+					point_name = base_name
+					var suffix := 2
+					while used_names.has(point_name):
+						point_name = "%s_%d" % [base_name, suffix]
+						suffix += 1
 				if used_names.has(point_name):
 					return [null, error_invalid_params("Duplicate blend point name '%s'" % point_name)]
 				used_names[point_name] = true
 				bs.call("add_blend_point", anim_node, pos[0], -1, StringName(point_name))
 			else:
 				bs.call("add_blend_point", anim_node, pos[0])
+	if params.has("blend_points"):
+		var expected := (params["blend_points"] as Array).size()
+		var got: int = bs.call("get_blend_point_count")
+		if got != expected:
+			return [null, error_internal("Godot accepted %d of %d blend points" % [got, expected])]
 	return [bs, null]
 
 
