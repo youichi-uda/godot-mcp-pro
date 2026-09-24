@@ -163,6 +163,8 @@ func _handle_request() -> void:
 			_cmd_assert_node_state(params)
 		"get_performance_monitors":
 			_cmd_get_performance_monitors(params)
+		"set_game_speed":
+			_cmd_set_game_speed(params)
 		_:
 			_write_response({"error": "Unknown command: %s" % command})
 
@@ -1468,8 +1470,18 @@ func _finish_move_to(success: bool, message: String) -> void:
 	})
 
 
+## Device id that real keyboard / mouse events carry on the running engine
+## (see mcp_input_service.gd): 16 / 32 on Godot 4.7+, 0 before. Looked up by
+## name so this autoload still parses on 4.5/4.6.
+static func _input_device_id(constant_name: String) -> int:
+	if ClassDB.class_has_integer_constant("InputEvent", constant_name):
+		return ClassDB.class_get_integer_constant("InputEvent", constant_name)
+	return 0
+
+
 func _inject_key(keycode: int, pressed: bool) -> void:
 	var event := InputEventKey.new()
+	event.device = _input_device_id("DEVICE_ID_KEYBOARD")
 	event.keycode = keycode
 	event.pressed = pressed
 	Input.parse_input_event(event)
@@ -1482,6 +1494,7 @@ func _inject_key(keycode: int, pressed: bool) -> void:
 func _release_all_keys() -> void:
 	for keycode: int in _moveto_keys_held.duplicate():
 		var event := InputEventKey.new()
+		event.device = _input_device_id("DEVICE_ID_KEYBOARD")
 		event.keycode = keycode
 		event.pressed = false
 		Input.parse_input_event(event)
@@ -1584,6 +1597,7 @@ func _reconstruct_event(data: Dictionary) -> InputEvent:
 	match type:
 		"key":
 			var event := InputEventKey.new()
+			event.device = _input_device_id("DEVICE_ID_KEYBOARD")
 			var keycode_str: String = data.get("keycode", "")
 			if not keycode_str.is_empty():
 				event.keycode = OS.find_keycode_from_string(keycode_str)
@@ -1594,6 +1608,7 @@ func _reconstruct_event(data: Dictionary) -> InputEvent:
 			return event
 		"mouse_button":
 			var event := InputEventMouseButton.new()
+			event.device = _input_device_id("DEVICE_ID_MOUSE")
 			event.button_index = data.get("button", MOUSE_BUTTON_LEFT)
 			event.pressed = data.get("pressed", true)
 			event.double_click = data.get("double_click", false)
@@ -1603,6 +1618,7 @@ func _reconstruct_event(data: Dictionary) -> InputEvent:
 			return event
 		"mouse_motion":
 			var event := InputEventMouseMotion.new()
+			event.device = _input_device_id("DEVICE_ID_MOUSE")
 			var pos: Dictionary = data.get("position", {})
 			event.position = Vector2(pos.get("x", 0.0), pos.get("y", 0.0))
 			event.global_position = event.position
@@ -1728,6 +1744,44 @@ func _cmd_get_performance_monitors(_params: Dictionary) -> void:
 	monitors["navigation_agent_count"] = Performance.get_monitor(Performance.NAVIGATION_AGENT_COUNT)
 
 	_write_response({"result": {"monitors": monitors, "process": "game"}})
+
+
+# ── set_game_speed ────────────────────────────────────────────────────────────
+
+## Bounds for Engine.time_scale. Below ~0.05 the game looks frozen and a test
+## waiting on it just times out; far above 20 the physics step cap
+## (max_physics_steps_per_frame) can no longer keep up, so physics silently
+## runs slower than the requested scale.
+const GAME_SPEED_MIN := 0.05
+const GAME_SPEED_MAX := 20.0
+
+
+## Reads or sets Engine.time_scale. Only time_scale is touched: changing
+## physics_ticks_per_second would change the simulation itself (step size,
+## collision tunnelling, jump heights) rather than just its speed.
+func _cmd_set_game_speed(params: Dictionary) -> void:
+	var previous := Engine.time_scale
+	var response := {}
+	var raw: Variant = params.get("scale", null)
+	if raw != null:
+		if not (raw is float or raw is int):
+			_write_response({"error": "scale must be a number, got %s" % type_string(typeof(raw))})
+			return
+		var requested := float(raw)
+		if is_nan(requested) or is_inf(requested):
+			_write_response({"error": "scale must be a finite number"})
+			return
+		var applied := clampf(requested, GAME_SPEED_MIN, GAME_SPEED_MAX)
+		Engine.time_scale = applied
+		response["requested_scale"] = requested
+		response["clamped"] = applied != requested
+	response["time_scale"] = Engine.time_scale
+	response["previous_time_scale"] = previous
+	response["changed"] = raw != null
+	response["physics_ticks_per_second"] = Engine.physics_ticks_per_second
+	response["max_physics_steps_per_frame"] = Engine.max_physics_steps_per_frame
+	response["allowed_range"] = [GAME_SPEED_MIN, GAME_SPEED_MAX]
+	_write_response(response)
 
 
 func _serialize_value(value: Variant) -> Variant:

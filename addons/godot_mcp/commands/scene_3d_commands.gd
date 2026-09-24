@@ -13,6 +13,7 @@ func get_commands() -> Dictionary:
 		"setup_environment": _setup_environment,
 		"setup_camera_3d": _setup_camera_3d,
 		"add_gridmap": _add_gridmap,
+		"get_gridmap_info": _get_gridmap_info,
 	}
 
 
@@ -204,8 +205,13 @@ func _setup_lighting(params: Dictionary) -> Dictionary:
 			light = OmniLight3D.new()
 		"SpotLight3D":
 			light = SpotLight3D.new()
+		"AreaLight3D":
+			# Godot 4.7+. Never referenced statically so this file still parses on 4.5/4.6.
+			if not ClassDB.class_exists("AreaLight3D"):
+				return _error_requires_version("light_type 'AreaLight3D'", "4.7")
+			light = ClassDB.instantiate("AreaLight3D") as Light3D
 		_:
-			return error_invalid_params("Unknown light_type '%s'. Available: DirectionalLight3D, OmniLight3D, SpotLight3D" % light_type)
+			return error_invalid_params("Unknown light_type '%s'. Available: DirectionalLight3D, OmniLight3D, SpotLight3D, AreaLight3D (Godot 4.7+)" % light_type)
 
 	if node_name.is_empty():
 		node_name = light_type
@@ -227,6 +233,11 @@ func _setup_lighting(params: Dictionary) -> Dictionary:
 		spot.spot_attenuation = _optional_float(params, "attenuation", 1.0)
 		spot.spot_angle = _optional_float(params, "spot_angle", 45.0)
 		spot.spot_angle_attenuation = _optional_float(params, "spot_angle_attenuation", 1.0)
+	elif light.get_class() == "AreaLight3D":
+		var area_err := _apply_area_light_params(light, params)
+		if not area_err.is_empty():
+			light.free()
+			return area_err
 
 	# Apply preset defaults after type creation
 	if not preset.is_empty():
@@ -254,12 +265,71 @@ func _setup_lighting(params: Dictionary) -> Dictionary:
 
 	_add_child_with_undo(light, parent, root, "MCP: Add %s" % light_type)
 
-	return success({
+	var out := {
 		"node_path": str(root.get_path_to(light)),
 		"name": str(light.name),
 		"light_type": light_type,
 		"preset": preset,
+	}
+	if light_type == "AreaLight3D":
+		var area_size: Vector2 = light.get("area_size")
+		out["area_size"] = {"x": area_size.x, "y": area_size.y}
+		out["area_range"] = light.get("area_range")
+		out["area_attenuation"] = light.get("area_attenuation")
+		out["area_normalize_energy"] = light.get("area_normalize_energy")
+		var area_tex: Variant = light.get("area_texture")
+		out["area_texture"] = (area_tex as Resource).resource_path if area_tex is Resource else ""
+	return success(out)
+
+
+## Error for a feature that the running Godot does not have (-32601, the same
+## code base_command uses for version-gated tools). Names both the
+## required and the running version so the caller can tell the difference
+## between a typo and an older editor.
+func _error_requires_version(feature: String, required: String) -> Dictionary:
+	var running: String = Engine.get_version_info().get("string", "unknown")
+	return error(-32601, "%s requires Godot %s+ (running %s)" % [feature, required, running], {
+		"required_version": required,
+		"running_version": running,
 	})
+
+
+## AreaLight3D (4.7+) properties: area_size, area_range, area_attenuation,
+## area_normalize_energy, area_texture. `range`/`attenuation` are accepted as
+## aliases for area_range/area_attenuation so the generic params keep working.
+## Everything goes through set() so nothing here is resolved at parse time.
+func _apply_area_light_params(light: Light3D, params: Dictionary) -> Dictionary:
+	if params.has("area_size"):
+		var v: Variant = params["area_size"]
+		var size := Vector2.ZERO
+		if v is Dictionary:
+			size = Vector2(float(v.get("x", 1.0)), float(v.get("y", 1.0)))
+		elif v is Array and v.size() >= 2:
+			size = Vector2(float(v[0]), float(v[1]))
+		elif v is String:
+			var parsed: Variant = PropertyParser.parse_value(v, TYPE_VECTOR2)
+			if parsed is Vector2:
+				size = parsed
+		else:
+			return error_invalid_params("'area_size' must be {x, y}, [x, y] or 'Vector2(x, y)'")
+		if size.x <= 0.0 or size.y <= 0.0:
+			return error_invalid_params("'area_size' components must be > 0")
+		light.set("area_size", size)
+	if params.has("area_range") or params.has("range"):
+		light.set("area_range", _optional_float(params, "area_range", _optional_float(params, "range", 5.0)))
+	if params.has("area_attenuation") or params.has("attenuation"):
+		light.set("area_attenuation", _optional_float(params, "area_attenuation", _optional_float(params, "attenuation", 1.0)))
+	if params.has("area_normalize_energy"):
+		light.set("area_normalize_energy", optional_bool(params, "area_normalize_energy", true))
+	var tex_path := optional_string(params, "area_texture", "")
+	if not tex_path.is_empty():
+		if not ResourceLoader.exists(tex_path):
+			return error_not_found("Texture '%s'" % tex_path)
+		var tex: Resource = load(tex_path)
+		if not tex is Texture2D:
+			return error_invalid_params("'%s' is not a Texture2D" % tex_path)
+		light.set("area_texture", tex)
+	return {}
 
 
 ## ─── 3. set_material_3d ───────────────────────────────────────────────────
@@ -678,3 +748,188 @@ func _add_gridmap(params: Dictionary) -> Dictionary:
 		"is_existing": is_existing,
 		"has_mesh_library": gridmap.mesh_library != null,
 	})
+
+
+## ─── 7. get_gridmap_info ─────────────────────────────────────────────────
+
+## Parses a cell-space AABB given as {position:{x,y,z}, size:{x,y,z}} or
+## {min:{x,y,z}, max:{x,y,z}} (both inclusive of the min corner). Returns
+## [aabb_or_null, error_or_null].
+func _parse_cell_bounds(value: Variant) -> Array:
+	if not value is Dictionary:
+		return [null, error_invalid_params("'bounds' must be {position:{x,y,z}, size:{x,y,z}} or {min:{x,y,z}, max:{x,y,z}} in cell coordinates")]
+	var d: Dictionary = value
+	var zero := Vector3.ZERO
+	if d.has("min") and d.has("max"):
+		var mn := _parse_vector3_param(d, "min", zero)
+		var mx := _parse_vector3_param(d, "max", zero)
+		return [AABB(mn, mx - mn).abs(), null]
+	if d.has("position") and d.has("size"):
+		return [AABB(_parse_vector3_param(d, "position", zero), _parse_vector3_param(d, "size", zero)).abs(), null]
+	return [null, error_invalid_params("'bounds' needs either position+size or min+max")]
+
+
+## Inclusive integer containment: a bounds of min (0,0,0) max (3,0,0) holds
+## cells x = 0..3.
+func _cell_in_bounds(cell: Vector3i, bounds: AABB) -> bool:
+	var mn := bounds.position
+	var mx := bounds.end
+	return cell.x >= mn.x and cell.x <= mx.x \
+		and cell.y >= mn.y and cell.y <= mx.y \
+		and cell.z >= mn.z and cell.z <= mx.z
+
+
+func _vec3i_dict(v: Vector3i) -> Dictionary:
+	return {"x": v.x, "y": v.y, "z": v.z}
+
+
+func _get_gridmap_info(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "node_path")
+	if result[1] != null:
+		return result[1]
+	var node_path: String = result[0]
+
+	var root := get_edited_root()
+	if root == null:
+		return error_no_scene()
+
+	var node := find_node_by_path(node_path)
+	if node == null:
+		return error_not_found("Node '%s'" % node_path, "Use find_nodes_by_type with type 'GridMap'")
+	if not node is GridMap:
+		return error_invalid_params("Node '%s' is not a GridMap (is %s)" % [node_path, node.get_class()])
+	var gridmap := node as GridMap
+
+	var has_item_filter := params.has("item")
+	var item_filter: int = optional_int(params, "item", -1)
+	var has_bounds := params.has("bounds")
+	var bounds := AABB()
+	if has_bounds:
+		var b := _parse_cell_bounds(params["bounds"])
+		if b[1] != null:
+			return b[1]
+		bounds = b[0]
+	var list_cells: bool = optional_bool(params, "list_cells", has_item_filter or has_bounds)
+	var max_cells: int = maxi(optional_int(params, "max_cells", 500), 0)
+	var include_octants: bool = optional_bool(params, "include_octants", true)
+	var max_octants: int = maxi(optional_int(params, "max_octants", 200), 0)
+
+	var lib := gridmap.mesh_library
+	var info := {
+		"node_path": str(root.get_path_to(gridmap)),
+		"godot_version": Engine.get_version_info().get("string", ""),
+		"mesh_library": (lib.resource_path if not lib.resource_path.is_empty() else "<embedded>") if lib != null else null,
+		"cell_size": {"x": gridmap.cell_size.x, "y": gridmap.cell_size.y, "z": gridmap.cell_size.z},
+		"cell_center": {"x": gridmap.cell_center_x, "y": gridmap.cell_center_y, "z": gridmap.cell_center_z},
+		"octant_size": gridmap.cell_octant_size,
+	}
+
+	var used: Array[Vector3i] = gridmap.get_used_cells()
+	info["used_cell_count"] = used.size()
+
+	# Bounds of all used cells (cell coordinates, inclusive) and per-item counts.
+	var item_counts := {}
+	var has_any := false
+	var mn := Vector3i.ZERO
+	var mx := Vector3i.ZERO
+	for cell: Vector3i in used:
+		var item := gridmap.get_cell_item(cell)
+		item_counts[item] = int(item_counts.get(item, 0)) + 1
+		if not has_any:
+			mn = cell
+			mx = cell
+			has_any = true
+		else:
+			mn = mn.min(cell)
+			mx = mx.max(cell)
+	if has_any:
+		info["bounds"] = {
+			"min": _vec3i_dict(mn),
+			"max": _vec3i_dict(mx),
+			"size": _vec3i_dict(mx - mn + Vector3i.ONE),
+		}
+	else:
+		info["bounds"] = null
+
+	var items: Array = []
+	var item_ids := item_counts.keys()
+	item_ids.sort()
+	for item_id: int in item_ids:
+		var entry := {"item": item_id, "count": item_counts[item_id]}
+		if lib != null and lib.get_item_list().has(item_id):
+			entry["name"] = lib.get_item_name(item_id)
+		items.append(entry)
+	info["items"] = items
+
+	# Cell listing, filtered and capped so the response stays small.
+	if list_cells:
+		var cells: Array = []
+		var matched := 0
+		for cell: Vector3i in used:
+			var item := gridmap.get_cell_item(cell)
+			if has_item_filter and item != item_filter:
+				continue
+			if has_bounds and not _cell_in_bounds(cell, bounds):
+				continue
+			matched += 1
+			if cells.size() < max_cells:
+				cells.append({
+					"x": cell.x, "y": cell.y, "z": cell.z,
+					"item": item,
+					"orientation": gridmap.get_cell_item_orientation(cell),
+				})
+		info["cells"] = cells
+		info["matched_cell_count"] = matched
+		info["cells_truncated"] = matched > cells.size()
+		if has_item_filter:
+			info["item_filter"] = item_filter
+		if has_bounds:
+			info["bounds_filter"] = {
+				"min": {"x": bounds.position.x, "y": bounds.position.y, "z": bounds.position.z},
+				"max": {"x": bounds.end.x, "y": bounds.end.y, "z": bounds.end.z},
+			}
+
+	# Octant summary: the octant query API only exists on Godot 4.7+.
+	if include_octants:
+		if gridmap.has_method("get_used_octants") and gridmap.has_method("get_octant_coords_from_cell_coords"):
+			var octants: Array = gridmap.call("get_used_octants_by_item", item_filter) if has_item_filter \
+				else gridmap.call("get_used_octants")
+			# Cell counts per octant are grouped from the used cells through the
+			# engine's own cell->octant mapping.
+			var per_octant := {}
+			for cell: Vector3i in used:
+				if has_item_filter and gridmap.get_cell_item(cell) != item_filter:
+					continue
+				var oc: Vector3i = gridmap.call("get_octant_coords_from_cell_coords", cell)
+				per_octant[oc] = int(per_octant.get(oc, 0)) + 1
+			var octant_list: Array = []
+			for oc: Vector3i in octants:
+				if octant_list.size() >= max_octants:
+					break
+				octant_list.append({"x": oc.x, "y": oc.y, "z": oc.z, "cell_count": int(per_octant.get(oc, 0))})
+			var octant_info := {
+				"available": true,
+				"used_octant_count": octants.size(),
+				"octants": octant_list,
+				"octants_truncated": octants.size() > octant_list.size(),
+			}
+			if has_bounds and gridmap.has_method("get_used_octants_in_bounds"):
+				# The engine's bounds query takes GridMap-local space, so convert
+				# the inclusive cell bounds into local-space extents first.
+				var cs := gridmap.cell_size
+				var local := AABB(bounds.position * cs, (bounds.size + Vector3.ONE) * cs)
+				var in_bounds: Array = gridmap.call("get_used_octants_in_bounds", local)
+				var ib: Array = []
+				for oc: Vector3i in in_bounds:
+					if ib.size() >= max_octants:
+						break
+					ib.append(_vec3i_dict(oc))
+				octant_info["used_octants_in_bounds"] = ib
+			info["octants"] = octant_info
+		else:
+			info["octants"] = {
+				"available": false,
+				"reason": "Octant queries (get_used_octants etc.) require Godot 4.7+; running %s" % Engine.get_version_info().get("string", "unknown"),
+			}
+
+	return success(info)

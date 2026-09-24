@@ -17,6 +17,8 @@ func get_commands() -> Dictionary:
 		"set_auto_dismiss": _set_auto_dismiss,
 		"get_editor_camera": _get_editor_camera,
 		"set_editor_camera": _set_editor_camera,
+		"get_unsaved_state": _get_unsaved_state,
+		"save_all": _save_all,
 	}
 
 
@@ -615,13 +617,31 @@ func _get_editor_camera(_params: Dictionary) -> Dictionary:
 		})
 	var pos := cam.global_position
 	var rot := cam.rotation_degrees
-	return success({
+	var payload := {
 		"position": {"x": pos.x, "y": pos.y, "z": pos.z},
 		"rotation_degrees": {"x": rot.x, "y": rot.y, "z": rot.z},
 		"fov": cam.fov,
 		"near": cam.near,
 		"far": cam.far,
-	})
+	}
+	var snap := _get_snap_3d()
+	if not snap.is_empty():
+		payload["snap_3d"] = snap
+	return success(payload)
+
+
+## The 3D viewport's snap settings (EditorInterface, Godot 4.6+). Returns {}
+## on older versions, where the snap state is not exposed, so the key is
+## simply omitted rather than reported with guessed values.
+func _get_snap_3d() -> Dictionary:
+	if not EditorInterface.has_method("is_node_3d_snap_enabled"):
+		return {}
+	return {
+		"enabled": EditorInterface.call("is_node_3d_snap_enabled"),
+		"translate": EditorInterface.call("get_node_3d_translate_snap"),
+		"rotate_degrees": EditorInterface.call("get_node_3d_rotate_snap"),
+		"scale_percent": EditorInterface.call("get_node_3d_scale_snap"),
+	}
 
 
 func _set_editor_camera(params: Dictionary) -> Dictionary:
@@ -666,6 +686,108 @@ func _set_editor_camera(params: Dictionary) -> Dictionary:
 		"rotation_degrees": {"x": rot.x, "y": rot.y, "z": rot.z},
 		"fov": cam.fov,
 	})
+
+
+## Reports which open scenes and scripts hold unsaved changes. The scene and
+## script lists come from Godot 4.7 APIs; on older versions they are null
+## (unknown), never an empty list that would read as "all saved".
+func _get_unsaved_state(_params: Dictionary) -> Dictionary:
+	return success(_collect_unsaved_state())
+
+
+func _collect_unsaved_state() -> Dictionary:
+	var open_scripts: Array = []
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor != null:
+		for open_resource in script_editor.get_open_scripts():
+			if open_resource is Resource and not (open_resource as Resource).resource_path.is_empty():
+				open_scripts.append(normalize_project_path((open_resource as Resource).resource_path))
+
+	# get_open_scene_roots() is Godot 4.5+; a static call is a parse error on
+	# 4.4 that would stop the whole addon from loading, so resolve it by name.
+	var untitled_scenes := 0
+	if EditorInterface.has_method("get_open_scene_roots"):
+		for scene_root in EditorInterface.call("get_open_scene_roots"):
+			if scene_root is Node and (scene_root as Node).scene_file_path.is_empty():
+				untitled_scenes += 1
+
+	var state := {
+		"unsaved_scenes": get_unsaved_scene_paths(),
+		"unsaved_scripts": get_unsaved_script_paths(),
+		"open_scenes": get_open_scene_paths(),
+		"open_scripts": open_scripts,
+		"godot_version": get_godot_version_string(),
+	}
+	if untitled_scenes > 0:
+		state["untitled_open_scenes"] = untitled_scenes
+	var notes: Array = []
+	if state["unsaved_scenes"] == null:
+		notes.append("unsaved_scenes requires Godot 4.7+ (EditorInterface.get_unsaved_scenes). null means unknown, not clean.")
+	if state["unsaved_scripts"] == null:
+		notes.append("unsaved_scripts requires Godot 4.7+ (ScriptEditor.get_unsaved_files). null means unknown, not clean.")
+	if not notes.is_empty():
+		state["notes"] = notes
+	return state
+
+
+## Saves every open scene (EditorInterface.save_all_scenes, all versions) and
+## every modified script-editor buffer (ScriptEditor.save_all_scripts, 4.7+),
+## then reports what was unsaved before and what is still unsaved afterwards.
+func _save_all(params: Dictionary) -> Dictionary:
+	var save_scenes := optional_bool(params, "scenes", true)
+	var save_scripts := optional_bool(params, "scripts", true)
+	if not save_scenes and not save_scripts:
+		return error_invalid_params("Nothing to save: both 'scenes' and 'scripts' are false")
+
+	var script_editor := EditorInterface.get_script_editor()
+	var can_save_scripts := script_editor != null and script_editor.has_method("save_all_scripts")
+	if save_scripts and not save_scenes and not can_save_scripts:
+		return error_requires_godot("save_all with scripts=true", "4.7")
+
+	var before := _collect_unsaved_state()
+	var notes: Array = []
+
+	if save_scenes:
+		# Untitled scenes have no path to save to; Godot skips them (and may
+		# show a "could not save" warning), so point at save_scene instead.
+		if before.get("untitled_open_scenes", 0) > 0:
+			notes.append("%d open scene(s) have never been saved and have no path; save_all cannot save them. Use save_scene with a path." % before["untitled_open_scenes"])
+		EditorInterface.save_all_scenes()
+
+	var scripts_saved: Variant = false
+	if save_scripts:
+		if can_save_scripts:
+			# The buffers are written as they are: a script whose file changed
+			# on disk after its buffer was edited is overwritten by the buffer.
+			script_editor.call("save_all_scripts")
+			scripts_saved = true
+		else:
+			scripts_saved = null
+			notes.append("Saving script-editor buffers requires Godot 4.7+ (ScriptEditor.save_all_scripts); scripts were not saved (running %s)." % get_godot_version_string())
+
+	# Saving emits resource_saved and filesystem updates on the same frame;
+	# let them settle before measuring what is still unsaved.
+	await get_tree().process_frame
+	var after := _collect_unsaved_state()
+
+	var payload := {
+		"scenes_saved": save_scenes,
+		"scripts_saved": scripts_saved,
+		"before": {
+			"unsaved_scenes": before["unsaved_scenes"],
+			"unsaved_scripts": before["unsaved_scripts"],
+		},
+		"remaining": {
+			"unsaved_scenes": after["unsaved_scenes"],
+			"unsaved_scripts": after["unsaved_scripts"],
+		},
+		"godot_version": after["godot_version"],
+	}
+	if after.has("notes"):
+		notes.append_array(after["notes"])
+	if not notes.is_empty():
+		payload["notes"] = notes
+	return success(payload)
 
 
 func _set_auto_dismiss(params: Dictionary) -> Dictionary:

@@ -53,6 +53,7 @@ setup_camera_3d      → 摄像机（可选 SpringArm3D 实现第三人称视角
 set_material_3d      → PBR 材质（albedo、metallic、roughness、emission）
 setup_collision      → 为物理体添加碰撞形状
 setup_physics_body   → 配置质量、摩擦力、重力
+get_gridmap_info     → 检查 GridMap：MeshLibrary、已用单元格范围、各物品数量（可按物品/范围筛选单元格）
 ```
 
 ### 4. 编写和编辑脚本
@@ -65,6 +66,8 @@ edit_script    → 修改现有脚本
   - 使用 `insert_at_line` + `text` 插入代码
 validate_script → 不运行即可检查语法错误
 read_script    → 编辑前读取当前内容
+reload_open_scripts → 外部修改后从磁盘重新加载已打开的脚本标签页（Godot 4.7+；有未保存修改的标签页会保留）
+close_script   → 关闭脚本标签页（Godot 4.7+；有未保存修改时会拒绝，除非 discard_unsaved=true）
 ```
 
 ### 5. 测试与调试
@@ -118,6 +121,7 @@ set_theme_color   → 修改 font_color 等
 set_theme_font_size → 调整文字大小
 set_theme_stylebox  → 背景、边框、圆角
 connect_signal    → 连接 button 的 pressed、value_changed 等信号
+add_virtual_joystick → 触发输入动作的屏幕触摸摇杆（Godot 4.7+；用鼠标测试需启用 input_devices/pointing/emulate_touch_from_mouse）
 ```
 
 ### 8. TileMap
@@ -199,6 +203,8 @@ for i in range(some_untyped_array.size()):
 ### 经常保存
 进行重大更改后请调用 `save_scene`。未保存的更改可能在编辑器重新加载时丢失。
 
+在编辑已在编辑器中打开的文件之前，或在任务结束时，先调用 `get_unsaved_state` 查看哪些内容未保存，再调用 `save_all` 保存所有已打开的场景和已修改的脚本缓冲区。在 Godot 4.5/4.6 上，未保存列表为 `null`（表示未知，而非“全部已保存”），且只会保存场景；从未保存过的场景需要使用带路径的 `save_scene`。
+
 ## 分析与调试工具
 
 出现问题时，使用以下工具进行排查：
@@ -221,6 +227,7 @@ assert_node_state   → 验证节点属性是否匹配预期值
 assert_screen_text  → 验证文本是否显示在屏幕上
 compare_screenshots → 视觉回归测试（使用文件路径，不要用 base64）
 run_stress_test     → 生成大量节点以测试性能
+set_game_speed      → 运行时设置 Engine.time_scale：0.25 = 慢动作（配合 capture_frames），4 = 快进较长的等待
 ```
 
 ## 高级模式
@@ -253,6 +260,7 @@ create_animation_tree           → 使用状态机或混合树设置 AnimationT
 add_state_machine_state         → 添加状态（idle、walk、run、jump）
 add_state_machine_transition    → 定义状态之间的过渡
 set_tree_parameter              → 控制混合参数
+setup_ik_modifier               → 为 Skeleton3D 添加 IK 修改器（TwoBoneIK3D、CCDIK3D、FABRIK3D 等）（Godot 4.6+）
 ```
 
 ## 推荐工作流顺序

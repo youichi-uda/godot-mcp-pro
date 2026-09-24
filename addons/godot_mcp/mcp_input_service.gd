@@ -5,6 +5,10 @@ extends Node
 const COMMANDS_PATH := "user://mcp_input_commands"
 
 var _sequence_queue: Array = []  # Array of event dicts
+## Payloads that arrived while a sequence was still running, in order. Each is
+## {"events": Array, "frame_delay": int}; frame_delay <= 0 means "dispatch all
+## events in one frame", so every payload keeps the timing it was sent with.
+var _payload_queue: Array = []
 var _sequence_frame_delay: int = 0
 var _sequence_frames_waited: int = 0
 
@@ -20,9 +24,13 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	# Process queued sequence events
+	# Process queued sequence events; start the next queued payload only on a
+	# later frame, so a sequence's last event (e.g. a click's release) and the
+	# next payload's first event never land in the same frame.
 	if not _sequence_queue.is_empty():
 		_process_sequence_tick()
+	elif not _payload_queue.is_empty():
+		_run_payload(_payload_queue.pop_front())
 
 	# Check for new commands from file
 	if FileAccess.file_exists(COMMANDS_PATH):
@@ -42,14 +50,32 @@ func _process_commands() -> void:
 		push_warning("[MCP Input] Failed to parse input commands JSON")
 		return
 
-	# Check if this is a sequence command (dict with "events" and "frame_delay")
+	# A sequence command is {"sequence_events": [...], "frame_delay": n};
+	# anything else is one or more events for the same frame.
+	var payload: Dictionary
 	if parsed is Dictionary and parsed.has("sequence_events"):
-		_start_sequence(parsed)
-		return
+		payload = {"events": parsed.get("sequence_events", []), "frame_delay": int(parsed.get("frame_delay", 1))}
+	else:
+		payload = {"events": parsed if parsed is Array else [parsed], "frame_delay": 0}
 
-	# Otherwise treat as immediate event(s)
-	var events: Array = parsed if parsed is Array else [parsed]
-	for event_data: Dictionary in events:
+	if _sequence_queue.is_empty() and _payload_queue.is_empty():
+		_run_payload(payload)
+	else:
+		# Something is still in flight (e.g. a click's press/release pair).
+		# Replacing it would drop its remaining events — a lost release leaves
+		# the button held — and dispatching now would overtake it. Queue the
+		# whole payload so it runs afterwards with its own timing.
+		_payload_queue.append(payload)
+
+
+func _run_payload(payload: Dictionary) -> void:
+	var events: Array = payload.get("events", [])
+	if int(payload.get("frame_delay", 0)) > 0:
+		_start_sequence({"sequence_events": events, "frame_delay": payload["frame_delay"]})
+		return
+	for event_data: Variant in events:
+		if not event_data is Dictionary:
+			continue
 		var event := _create_event(event_data)
 		if event != null:
 			_dispatch_event(event, event_data)
@@ -89,6 +115,23 @@ func _dispatch_next_sequence_event() -> void:
 ## "unhandled": false in the event payload — only auto-promote when the
 ## caller did NOT pass an "unhandled" key. Default behavior preserved.
 func _dispatch_event(event: InputEvent, event_data: Dictionary = {}) -> void:
+	_dispatch_now(event, event_data)
+	# A timed hold (simulate_key duration): release it relative to the moment
+	# the press really went out, in real seconds regardless of time_scale.
+	var hold: float = float(event_data.get("hold_sec", 0.0))
+	if hold > 0.0 and event is InputEventKey and (event as InputEventKey).pressed:
+		var release_data := event_data.duplicate()
+		release_data["pressed"] = false
+		release_data.erase("hold_sec")
+		get_tree().create_timer(hold, true, false, true).timeout.connect(
+			func() -> void:
+				var release := _create_event(release_data)
+				if release != null:
+					_dispatch_now(release, release_data)
+		)
+
+
+func _dispatch_now(event: InputEvent, event_data: Dictionary = {}) -> void:
 	var force_unhandled: bool
 	if event_data.has("unhandled"):
 		force_unhandled = bool(event_data.get("unhandled"))
@@ -131,8 +174,25 @@ func _viewport_to_window(viewport_pos: Vector2) -> Vector2:
 	return xform * viewport_pos
 
 
+## Device id that real keyboard / mouse events carry on the running engine.
+##
+## Godot 4.7 gives keyboard and mouse their own ids (InputEvent.DEVICE_ID_KEYBOARD
+## = 16, DEVICE_ID_MOUSE = 32; ids 0-15 are joypads), and InputMap only matches
+## an event whose device equals the mapped event's (or the mapping's "all
+## devices" -1). A synthetic key left on device 0 would look like joypad 0: it
+## would miss every keyboard-mapped action and fool game code that filters on
+## event.device. Resolved by name because referencing the constants directly is
+## a parse error on 4.5/4.6 — which would break the user's game — and there
+## keyboard/mouse events use device 0, so 0 keeps the old behaviour.
+static func _input_device_id(constant_name: String) -> int:
+	if ClassDB.class_has_integer_constant("InputEvent", constant_name):
+		return ClassDB.class_get_integer_constant("InputEvent", constant_name)
+	return 0
+
+
 func _create_key_event(data: Dictionary) -> InputEventKey:
 	var event := InputEventKey.new()
+	event.device = _input_device_id("DEVICE_ID_KEYBOARD")
 	var keycode_str: String = data.get("keycode", "")
 	if keycode_str.begins_with("KEY_"):
 		var constant_value = ClassDB.class_get_integer_constant("@GlobalScope", keycode_str)
@@ -159,6 +219,7 @@ func _extract_position(data: Dictionary) -> Vector2:
 
 func _create_mouse_button_event(data: Dictionary) -> InputEventMouseButton:
 	var event := InputEventMouseButton.new()
+	event.device = _input_device_id("DEVICE_ID_MOUSE")
 	event.button_index = data.get("button", MOUSE_BUTTON_LEFT)
 	event.pressed = data.get("pressed", true)
 	event.double_click = data.get("double_click", false)
@@ -170,6 +231,7 @@ func _create_mouse_button_event(data: Dictionary) -> InputEventMouseButton:
 
 func _create_mouse_motion_event(data: Dictionary) -> InputEventMouseMotion:
 	var event := InputEventMouseMotion.new()
+	event.device = _input_device_id("DEVICE_ID_MOUSE")
 	var window_pos := _viewport_to_window(_extract_position(data))
 	event.position = window_pos
 	event.global_position = window_pos
@@ -197,6 +259,9 @@ func _create_mouse_motion_event(data: Dictionary) -> InputEventMouseMotion:
 
 
 func _create_action_event(data: Dictionary) -> InputEventAction:
+	# Left at the default device 0 on purpose: an InputEventAction is matched
+	# by action name, not through InputMap's per-device lookup, so its device
+	# does not affect is_action_pressed(). simulate_action keeps its behaviour.
 	var event := InputEventAction.new()
 	event.action = data.get("action", "")
 	event.pressed = data.get("pressed", true)

@@ -53,6 +53,7 @@ setup_camera_3d      → カメラ（オプションでSpringArm3Dによる三�
 set_material_3d      → PBRマテリアル（albedo、metallic、roughness、emission）
 setup_collision      → 物理ボディにコリジョンシェイプを追加
 setup_physics_body   → 質量、摩擦、重力の設定
+get_gridmap_info     → GridMapを調査：MeshLibrary、使用セルの範囲、アイテム別の数（アイテム/範囲でセルを絞り込み可）
 ```
 
 ### 4. スクリプトの作成と編集
@@ -65,6 +66,8 @@ edit_script    → 既存スクリプトを編集
   - `insert_at_line` + `text` でコードを挿入
 validate_script → 実行せずに構文エラーをチェック
 read_script    → 編集前に現在の内容を確認
+reload_open_scripts → 外部で変更した後、開いているスクリプトタブをディスクから再読み込み（Godot 4.7+、未保存の変更があるタブはそのまま）
+close_script   → スクリプトタブを閉じる（Godot 4.7+、未保存の変更があると discard_unsaved=true を指定しない限り拒否）
 ```
 
 ### 5. プレイテストとデバッグ
@@ -118,6 +121,7 @@ set_theme_color   → font_colorなどの変更
 set_theme_font_size → テキストサイズの調整
 set_theme_stylebox  → 背景、ボーダー、角丸
 connect_signal    → buttonのpressed、value_changedなどを接続
+add_virtual_joystick → 入力アクションを押す画面上のタッチジョイスティック（Godot 4.7+、マウスで試すには input_devices/pointing/emulate_touch_from_mouse を有効化）
 ```
 
 ### 8. TileMap
@@ -204,6 +208,8 @@ for i in range(some_untyped_array.size()):
 
 大きな変更を行った後は `save_scene` を呼んでください。保存していない変更はエディタのリロード時に失われる可能性があります。
 
+エディタで開いているファイルを編集する前や作業の終わりには、`get_unsaved_state` で未保存のものを確認し、`save_all` で開いているすべてのシーンと変更済みのスクリプトバッファを保存してください。Godot 4.5/4.6 では未保存リストは `null`（「すべて保存済み」ではなく「不明」）で、保存されるのはシーンのみです。一度も保存していないシーンにはパスを指定して `save_scene` を使ってください。
+
 ## 分析とデバッグツール
 
 問題が発生した場合、以下のツールで調査できます：
@@ -226,6 +232,7 @@ assert_node_state   → ノードプロパティが期待値と一致するか�
 assert_screen_text  → 画面にテキストが表示されているか検証
 compare_screenshots → ビジュアル回帰テスト（base64ではなくファイルパスを使用）
 run_stress_test     → 多数のノードを生成してパフォーマンスをテスト
+set_game_speed      → 実行中の Engine.time_scale を設定：0.25 = capture_frames 用のスロー再生、4 = 長い待ちを早送り
 ```
 
 ## 高度なパターン
@@ -258,6 +265,7 @@ create_animation_tree           → ステートマシンまたはブレンド�
 add_state_machine_state         → ステートを追加（idle、walk、run、jump）
 add_state_machine_transition    → ステート間のトランジションを定義
 set_tree_parameter              → ブレンドパラメータを制御
+setup_ik_modifier               → Skeleton3D にIKモディファイア（TwoBoneIK3D、CCDIK3D、FABRIK3D など）を追加（Godot 4.6+）
 ```
 
 ## 推奨ワークフロー順序

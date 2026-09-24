@@ -2,6 +2,8 @@
 extends "res://addons/godot_mcp/commands/base_command.gd"
 
 const COMMANDS_PATH := "user://mcp_input_commands"
+## How long to wait for the game to consume the previous payload.
+const COMMAND_CONSUME_TIMEOUT_SEC := 1.0
 
 
 func get_commands() -> Dictionary:
@@ -33,8 +35,23 @@ func _simulate_key(params: Dictionary) -> Dictionary:
 		"ctrl": ctrl,
 		"alt": alt,
 	}
-	_write_commands([event])
-	return success({"sent": true, "event": event})
+	# hold_sec: the game releases the key itself this long after the press is
+	# actually dispatched. Timing it on the MCP side instead breaks when the
+	# press waits in the game's queue behind a running sequence: press and
+	# release would then land one frame apart.
+	var hold_sec: float = optional_float(params, "hold_sec", 0.0)
+	if hold_sec > 0.0:
+		if not pressed:
+			return error_invalid_params("hold_sec needs pressed=true")
+		if is_nan(hold_sec) or is_inf(hold_sec) or hold_sec > 600.0:
+			return error_invalid_params("hold_sec must be a finite number of seconds up to 600")
+		event["hold_sec"] = hold_sec
+	var write_result: Dictionary = await _write_payload([event])
+	if not write_result.is_empty():
+		return write_result
+	# hold_supported tells the MCP server this addon releases held keys
+	# itself; an older addon lacks it, and the server then releases on a timer.
+	return success({"sent": true, "event": event, "hold_supported": true})
 
 
 func _simulate_mouse_click(params: Dictionary) -> Dictionary:
@@ -61,15 +78,14 @@ func _simulate_mouse_click(params: Dictionary) -> Dictionary:
 			"sequence_events": [press_event, release_event],
 			"frame_delay": 1,
 		}
-		var json := JSON.stringify(sequence_data)
-		var file := FileAccess.open(COMMANDS_PATH, FileAccess.WRITE)
-		if file == null:
-			return error_internal("Failed to write commands: %s" % error_string(FileAccess.get_open_error()))
-		file.store_string(json)
-		file.close()
+		var write_err: Dictionary = await _write_payload(sequence_data)
+		if not write_err.is_empty():
+			return write_err
 		return success({"sent": true, "event": press_event, "auto_release": true})
 
-	_write_commands([press_event])
+	var err: Dictionary = await _write_payload([press_event])
+	if not err.is_empty():
+		return err
 	return success({"sent": true, "event": press_event})
 
 
@@ -96,7 +112,9 @@ func _simulate_mouse_move(params: Dictionary) -> Dictionary:
 		event["unhandled"] = unhandled
 	elif button_mask > 0:
 		event["unhandled"] = true
-	_write_commands([event])
+	var write_result: Dictionary = await _write_payload([event])
+	if not write_result.is_empty():
+		return write_result
 	return success({"sent": true, "event": event})
 
 
@@ -115,7 +133,9 @@ func _simulate_action(params: Dictionary) -> Dictionary:
 		"pressed": pressed,
 		"strength": strength,
 	}
-	_write_commands([event])
+	var write_result: Dictionary = await _write_payload([event])
+	if not write_result.is_empty():
+		return write_result
 	return success({"sent": true, "event": event})
 
 
@@ -140,28 +160,35 @@ func _simulate_sequence(params: Dictionary) -> Dictionary:
 
 	if frame_delay <= 0:
 		# All events in one frame - write as plain array
-		_write_commands(events)
+		var flat_err: Dictionary = await _write_payload(events)
+		if not flat_err.is_empty():
+			return flat_err
 	else:
 		# Sequence with frame delay - game side handles timing
 		var sequence_data := {
 			"sequence_events": events,
 			"frame_delay": frame_delay,
 		}
-		var json := JSON.stringify(sequence_data)
-		var file := FileAccess.open(COMMANDS_PATH, FileAccess.WRITE)
-		if file == null:
-			return error_internal("Failed to write commands: %s" % error_string(FileAccess.get_open_error()))
-		file.store_string(json)
-		file.close()
+		var seq_err: Dictionary = await _write_payload(sequence_data)
+		if not seq_err.is_empty():
+			return seq_err
 
 	return success({"sent": true, "event_count": events.size(), "frame_delay": frame_delay})
 
 
-func _write_commands(events: Array) -> void:
-	var json := JSON.stringify(events)
+## Writes one command payload for the running game's MCPInputService.
+##
+## The game polls this single file once per frame, reads it and deletes it.
+## Two tool calls in quick succession (simulate_key then simulate_mouse_click)
+## used to overwrite the first payload before the game had read it, silently
+## dropping that input. Wait for the previous payload to be consumed first;
+## if it is still there after the grace period (game paused, not running, or
+## stalled), overwrite it as before so a stale file cannot block input forever.
+func _write_payload(payload: Variant) -> Dictionary:
+	await await_input_payload_consumed(COMMANDS_PATH, COMMAND_CONSUME_TIMEOUT_SEC)
 	var file := FileAccess.open(COMMANDS_PATH, FileAccess.WRITE)
 	if file == null:
-		push_error("[MCP Input] Failed to write commands: %s" % error_string(FileAccess.get_open_error()))
-		return
-	file.store_string(json)
+		return error_internal("Failed to write commands: %s" % error_string(FileAccess.get_open_error()))
+	file.store_string(JSON.stringify(payload))
 	file.close()
+	return {}

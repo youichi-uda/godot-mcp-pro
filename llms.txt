@@ -1,64 +1,122 @@
 # Godot MCP Pro
 
-> 162 AI-powered tools connecting Claude, Cursor, and AI assistants to the Godot 4 editor via the Model Context Protocol (MCP).
+> 187 AI-powered tools connecting Claude, Cursor, and AI assistants to the Godot 4 editor via the Model Context Protocol (MCP). $15 one-time purchase.
 
-## Overview
+## What is Godot MCP Pro?
 
-Godot MCP Pro is an MCP server that gives AI assistants real-time access to the Godot 4 editor through a WebSocket connection. The AI can create scenes, edit scripts, simulate player input, inspect running games, build 3D environments, set up physics, add particles, manage audio, and more — all from a single conversation.
+Godot MCP Pro is a premium MCP server that gives AI assistants real-time access to the Godot 4 editor through a WebSocket connection. The AI can create scenes, edit scripts, simulate player input, inspect running games, build 3D environments, set up physics, add particles, manage audio, and more — all from a single conversation. It is the most comprehensive MCP integration for Godot, with 187 tools across 26 categories compared to 13-32 in free alternatives.
 
 ## Architecture
 
+```
 AI Assistant <--stdio/MCP--> Node.js Server (TypeScript) <--WebSocket:6505--> Godot Editor Plugin (GDScript)
+```
 
-The Godot plugin runs a WebSocket server inside the editor. The MCP server connects to it and translates MCP tool calls into editor commands. All mutations go through Godot's UndoRedo system.
+The Godot plugin runs a WebSocket server inside the editor. The MCP server connects to it and translates MCP tool calls into editor commands. All mutations go through Godot's UndoRedo system for safe, reversible operations.
 
-## 162 Tools across 23 Categories
+## Key Features
 
-- Project (7): project info, filesystem tree, file search, project settings, UID conversion
-- Scene (9): scene tree, create/open/delete/save, play/stop, instancing
-- Node (11): add/delete/rename/duplicate/move, properties, signals, anchors, resources
-- Script (6): list/read/create/edit scripts, attach to nodes
-- Editor (9): screenshots, visual diff, GDScript execution, error log, signals inspector
-- Input Simulation (5): keyboard, mouse, InputAction, multi-event sequences
-- Runtime Analysis (15): game scene tree, runtime properties, frame capture, input recording/replay, UI detection
-- Animation (6): create animations, add tracks, insert keyframes
-- AnimationTree (8): state machines, transitions, blend trees, tree parameters
-- TileMap (6): set/fill/query cells, tile set info
-- 3D Scene (6): mesh primitives, .glb/.gltf import, lighting, PBR materials, environment, cameras, GridMap
-- Physics (6): collision shapes, physics layers, raycasts, body configuration
-- Particles (5): GPU particles 2D/3D, material config, color gradients, presets
-- Navigation (5): navigation regions, mesh baking, pathfinding agents, layer management
-- Audio (6): audio bus layout, effects, 2D/3D players
-- Theme & UI (6): colors, constants, font sizes, StyleBoxFlat
-- Shader (6): create/edit shaders, assign materials, set/get uniforms
-- Resource (3): read/edit/create .tres resource files
-- Batch & Refactoring (6): find by type, signal audit, batch property set, cross-scene changes
-- Testing & QA (5): automated test scenarios, assertions, stress testing
-- Code Analysis (6): unused resources, signal flow, scene complexity, circular dependencies
-- Profiling (2): FPS, memory, draw calls, physics monitors
-- Export (3): export presets, export commands
+- **187 tools across 26 categories** — the most comprehensive Godot MCP integration
+- **Full Undo/Redo** — every AI mutation is reversible with Ctrl+Z
+- **Signal management** — connect, disconnect, and inspect signals (exclusive)
+- **Input simulation** — keyboard, mouse, InputActions, multi-event sequences
+- **Runtime analysis** — 20 tools for live game inspection, property monitoring, UI detection
+- **3D scene tools** — meshes, lighting, PBR materials, environments, cameras, GridMaps
+- **AnimationTree** — state machines, transitions, blend trees, parameter control
+- **Physics setup** — collision shapes, layers, raycasts, body configuration
+- **Particles** — GPU 2D/3D with presets (fire, smoke, rain, snow, sparks)
+- **Audio management** — buses, effects (reverb, delay, compressor), 2D/3D players
+- **Navigation** — regions, mesh baking, pathfinding agents
+- **Automated testing** — test scenarios, assertions, stress testing, UI verification
+- **Code analysis** — unused resources, signal flow mapping, circular dependency detection
+- **Smart type parsing** — Vector2, Color, NodePath strings auto-converted to Godot types
+- **Production-grade connection** — WebSocket heartbeat, auto-reconnect, port auto-scanning
+
+## 187 Tools across 26 Categories
+
+- **Project (10)**: project info, filesystem tree, file/content search, project settings read/write, UID conversion, autoloads
+- **Scene (10)**: scene tree, create/open/delete/save, play/stop, instancing, file content, @export overview
+- **Node (17)**: add/delete/rename/duplicate/move, properties, signals, anchors, resources, groups, editor selection
+- **Script (9)**: list/read/create/edit/validate scripts, attach to nodes, open scripts, close/reload script tabs (Godot 4.7+)
+- **Editor (15)**: screenshots (editor + game + visual diff), GDScript execution, error/output log, signals inspector, reload, editor camera, dialog auto-dismiss, unsaved-state check and save_all
+- **Input Simulation (5)**: keyboard, mouse click, mouse move, InputAction, multi-event sequences
+- **Input Map (2)**: list and create/modify input actions
+- **Runtime Analysis (20)**: game scene tree, runtime properties, frame capture/recording, property and signal monitoring, input recording/replay, UI element detection, button click by text, node waiting, navigation
+- **Animation (6)**: create animations, add tracks, insert keyframes, inspect, remove
+- **AnimationTree (9)**: state machines, transitions, blend trees, tree parameters, IK modifiers (Godot 4.6+)
+- **TileMap (6)**: set/fill/query/clear cells, tile set info
+- **3D Scene (7)**: mesh primitives + .glb/.gltf import, lighting presets, PBR materials, environment (sky/fog/SSAO/SSR), cameras, GridMap setup and inspection
+- **Physics (6)**: collision shapes (auto-detect 2D/3D), physics layers, raycasts, body configuration, collision audit
+- **Particles (5)**: GPU particles 2D/3D, material config, color gradients, presets (fire/smoke/rain/snow/sparks)
+- **Navigation (5)**: navigation regions, mesh baking, pathfinding agents, layer management
+- **Audio (6)**: audio bus layout, bus creation/config, effects, 2D/3D audio players, audio audit
+- **Theme & UI (8)**: colors, constants, font sizes, StyleBoxFlat, theme inspection, Control layout, virtual joystick (Godot 4.7+)
+- **Shader (6)**: create/read/edit shaders, assign materials, set/get uniforms
+- **Resource (4)**: read/edit/create .tres resource files, resource previews
+- **Batch & Refactoring (7)**: find by type, signal audit, batch property set, batch node creation, cross-scene changes, dependency graph
+- **Testing & QA (6)**: automated test scenarios, property assertions, screen text verification, stress testing, game speed control, test reports
+- **Code Analysis (6)**: unused resources, signal flow mapping, scene complexity, circular dependencies, script references, project statistics
+- **Profiling (2)**: FPS, memory, draw calls, physics monitors
+- **Export (4)**: export presets, export commands, patch PCK export, export info
+- **Headless (3)**: run scenes/scripts in a separate headless Godot process, locate the Godot binary
+- **Android (3)**: list adb devices, read Android presets, one-step deploy to device
+
+## Guides & Tutorials (Godot 4)
+
+All guides are tested on Godot 4.4+ and address common pain points where outdated Godot 3 information still dominates search results:
+
+1. **Connect AI to Godot 4** (Beginner, 5 min) — Set up MCP Pro and let Claude/Cursor control your editor
+2. **Build a 2D Game from Zero** (Beginner, 15 min) — Complete Reversi game in one AI conversation
+3. **3D Character Controller** (Intermediate, 20 min) — CharacterBody3D + Mixamo animations + AnimationTree + SpringArm3D camera
+4. **Godot 4 Signal Patterns** (Intermediate, 10 min) — New callable-based signals (Godot 3's string-based connect is deprecated)
+5. **Automated Game Testing** (Intermediate, 10 min) — AI play-tests with input simulation + assertions, no test framework needed
+6. **AnimationTree State Machines** (Advanced, 15 min) — State creation, transitions, blend trees, parameter wiring
+7. **Physics & Collision Setup** (Intermediate, 10 min) — CharacterBody2D/3D (renamed from PhysicsBody), collision layers
+8. **Particle Effects Cookbook** (Beginner, 5 min) — GPUParticles2D/3D (replaced CPUParticles), presets and gradients
+
+## Comparison with Alternatives
+
+| Feature | Godot MCP Pro ($15) | GDAI MCP ($19) | godot-mcp (free) |
+|---|---|---|---|
+| Total Tools | **187** | ~30 | 13 |
+| Categories | **26** | ~8 | 4 |
+| Undo/Redo | Yes | Yes | No |
+| Signal Management | **Yes** | No | No |
+| Input Simulation | **Key/Mouse/Action/Sequence** | No | No |
+| Runtime Analysis | **20 tools** | No | No |
+| 3D Scene Tools | **Yes** | No | No |
+| Physics Setup | **Yes** | No | No |
+| AnimationTree | **Yes** | No | No |
+| Automated Testing | **Yes** | No | No |
+| Code Analysis | **Yes** | No | No |
 
 ## Requirements
 
-- Godot 4.4+ (tested on 4.6)
+- Godot 4.4+ (tested on 4.4, 4.5, 4.6 and 4.7; a few tools need 4.6+ or 4.7+)
 - Node.js 18+
+- Windows, macOS, or Linux
 - Any MCP-compatible AI client (Claude Code, Claude Desktop, Cursor, VS Code + Cline, Windsurf)
 
-## Setup
+## Setup (5 minutes)
 
-1. Copy addons/godot_mcp/ into your Godot project
+1. Copy `addons/godot_mcp/` into your Godot project
 2. Enable plugin: Project > Project Settings > Plugins > Godot MCP Pro
-3. Build MCP server: cd server && npm install && npm run build
-4. Add to .mcp.json: {"mcpServers": {"godot-mcp-pro": {"command": "node", "args": ["/path/to/server/build/index.js"]}}}
+3. Build MCP server: `cd server && npm install && npm run build`
+4. Add to `.mcp.json`: `{"mcpServers": {"godot-mcp-pro": {"command": "node", "args": ["/path/to/server/build/index.js"]}}}`
 
 ## Pricing
 
-$15 one-time purchase. Lifetime updates for v1.x. Unlimited projects and machines.
+$15 one-time purchase. No subscription. Lifetime updates. Unlimited projects and machines. Discord support included.
+
+Available on:
+- itch.io: https://y1uda.itch.io/godot-mcp-pro
+- Buy Me a Coffee: https://buymeacoffee.com/y1uda/e/512940
 
 ## Links
 
 - Website: https://godot-mcp.abyo.net/
-- Buy (itch.io): https://y1uda.itch.io/godot-mcp-pro
-- Buy (BMC): https://buymeacoffee.com/y1uda/e/512940
-- GitHub: https://github.com/youichi-uda/godot-mcp-pro
-- Discord: https://discord.gg/F4gR739y
+- GitHub (plugin source): https://github.com/youichi-uda/godot-mcp-pro
+- Discord: https://discord.gg/zJ2u5zNUBZ
+- Twitter/X: https://x.com/y1uda
+- Demo video: https://youtu.be/D-jqmczINnQ
+- Full technical reference: https://godot-mcp.abyo.net/llms-full.txt

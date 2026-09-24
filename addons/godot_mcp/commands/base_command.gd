@@ -429,9 +429,89 @@ func guard_text_resource_write(path: String, force: bool) -> Dictionary:
 	return {}
 
 
+## Marks the edited scene dirty after a change that bypassed undo/redo.
+##
+## Godot 4.6 added EditorInterface.set_object_edited()/is_object_edited(), but
+## they only toggle a per-object "edited" flag: measured on 4.7.2, calling
+## set_object_edited(scene_root, true) leaves get_unsaved_scenes() empty,
+## while mark_scene_as_unsaved() adds the scene to it. The flag therefore does
+## not make the scene savable-dirty, so this helper keeps using
+## mark_scene_as_unsaved() on every version.
 func mark_current_scene_unsaved() -> void:
 	if EditorInterface.has_method("mark_scene_as_unsaved"):
 		EditorInterface.mark_scene_as_unsaved()
+
+
+## ── Version-gated editor APIs ─────────────────────────────────────────────
+## Several editor queries only exist on newer Godot versions. The addon must
+## still parse on 4.5, so these are always reached through has_method()/call()
+## rather than referenced statically: a static call to a method the running
+## engine lacks is a parse error that takes down the whole command file.
+
+func get_godot_version_string() -> String:
+	return str(Engine.get_version_info().get("string", "unknown"))
+
+
+## Error for a tool whose editor API is newer than the running Godot.
+## -32601 matches the router's "method not found": the capability does not
+## exist here, which is different from a bad parameter or a failed call.
+func error_requires_godot(tool_name: String, min_version: String) -> Dictionary:
+	var running := get_godot_version_string()
+	return error(-32601, "%s requires Godot %s+ (running %s)" % [tool_name, min_version, running], {
+		"required_version": min_version,
+		"running_version": running,
+	})
+
+
+## Paths of open scenes with unsaved changes (EditorInterface.get_unsaved_scenes,
+## Godot 4.7+). Returns null when this Godot cannot tell; null means unknown,
+## never "nothing is unsaved".
+func get_unsaved_scene_paths() -> Variant:
+	if not EditorInterface.has_method("get_unsaved_scenes"):
+		return null
+	var paths: Array = []
+	for scene_path: String in EditorInterface.call("get_unsaved_scenes"):
+		paths.append(normalize_project_path(scene_path) if not scene_path.is_empty() else scene_path)
+	return paths
+
+
+## Paths of scripts whose script-editor buffer holds unsaved edits
+## (ScriptEditor.get_unsaved_files, Godot 4.7+). Returns null when this Godot
+## cannot tell. Older versions have no reliable way to ask: the only signal
+## is the "(*)" decoration in the script list UI, which is not an API.
+func get_unsaved_script_paths() -> Variant:
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null or not script_editor.has_method("get_unsaved_files"):
+		return null
+	var paths: Array = []
+	for file_path: String in script_editor.call("get_unsaved_files"):
+		paths.append(normalize_project_path(file_path) if not file_path.is_empty() else file_path)
+	return paths
+
+
+## true / false when the script editor can say whether `path` has unsaved
+## buffer edits (Godot 4.7+), null when it cannot.
+func is_script_unsaved_in_editor(path: String) -> Variant:
+	var unsaved: Variant = get_unsaved_script_paths()
+	if unsaved == null:
+		return null
+	var target := normalize_project_path(path)
+	for unsaved_path: String in unsaved:
+		if paths_match(unsaved_path, target):
+			return true
+	return false
+
+
+## Reloads the script editor's open buffers from disk
+## (ScriptEditor.reload_open_files, Godot 4.7+). Returns false when the API
+## is missing. Measured on 4.7.2: only buffers WITHOUT unsaved edits are
+## refreshed; a modified buffer keeps its content.
+func reload_script_editor_buffers() -> bool:
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null or not script_editor.has_method("reload_open_files"):
+		return false
+	script_editor.call("reload_open_files")
+	return true
 
 
 func add_child_with_undo(parent: Node, child: Node, root: Node, action_name: String) -> void:
@@ -693,6 +773,22 @@ func watch_text_persistence(path: String, expected_md5: String, what: String) ->
 		push_warning(
 			"[MCP] %s: '%s' changed within ~5s of the edit being reported as written (md5 %s -> %s). If nothing else was supposed to touch it, look for a second writer: a parallel MCP session on another server port, a stale duplicate tool call, or an editor buffer save." % [what, normalize_project_path(path), expected_md5, disk_md5]
 		)
+
+
+## Waits (up to timeout_sec) until the running game's MCPInputService has
+## consumed the previous input payload at `path`. The game reads and deletes
+## that single file once per frame, so writing a new payload before it has
+## been read silently replaced — and dropped — the previous input. Returns
+## false on timeout; callers then overwrite as before so a stale file left by
+## a stopped or paused game cannot block input forever.
+func await_input_payload_consumed(path: String, timeout_sec: float = 1.0) -> bool:
+	var waited := 0.0
+	while FileAccess.file_exists(path):
+		if waited >= timeout_sec:
+			return false
+		await get_tree().create_timer(0.02).timeout
+		waited += 0.02
+	return true
 
 
 ## Find node by path in edited scene

@@ -1,6 +1,6 @@
 # Godot MCP Pro
 
-Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **175 powerful tools**.
+Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **187 powerful tools**.
 
 ## Architecture
 
@@ -63,10 +63,12 @@ Godot MCP Pro offers four modes to fit any client's tool limit:
 
 | Mode | Tools | Best For |
 |------|-------|----------|
-| **Full** (default) | 175 | Claude Code, Cline, VS Code Copilot, Cursor |
-| **3D** (`--3d`) | 103 | Antigravity and other 100-tool-limit clients needing 3D |
-| **Lite** (`--lite`) | 84 | Windsurf, JetBrains Junie, Gemini CLI |
+| **Full** (default) | 187 | Claude Code, Cline, VS Code Copilot, Cursor |
+| **3D** (`--3d`) | 100 | Antigravity and other 100-tool-limit clients needing 3D |
+| **Lite** (`--lite`) | 88 | Windsurf, JetBrains Junie, Gemini CLI |
 | **Minimal** (`--minimal`) | 35 | OpenCode, local LLMs with small context |
+
+`--3d` includes the core tools plus physics, AnimationTree and navigation, but omits `uid_to_project_path`, `project_path_to_uid`, `compare_screenshots`, `clear_output`, `close_script`, `reload_open_scripts`, `set_anchor_preset` and `click_button_by_text` to stay within the 100-tool cap.
 
 ```json
 {
@@ -133,20 +135,23 @@ The CLI connects directly to the Godot editor plugin via WebSocket. It requires:
 
 Open your Godot project with the plugin enabled, then use Claude Code to interact with the editor.
 
-## All 175 Tools
+## All 187 Tools
 
-### Project Tools (7)
+### Project Tools (10)
 | Tool | Description |
 |------|-------------|
 | `get_project_info` | Project metadata, version, viewport, autoloads |
 | `get_filesystem_tree` | Recursive file tree with filtering |
 | `search_files` | Fuzzy/glob file search |
+| `search_in_files` | Search content in project files |
 | `get_project_settings` | Read project.godot settings |
 | `set_project_setting` | Set project settings via editor API |
 | `uid_to_project_path` | UID → res:// conversion |
 | `project_path_to_uid` | res:// → UID conversion |
+| `add_autoload` | Register autoload singleton |
+| `remove_autoload` | Remove autoload singleton |
 
-### Scene Tools (9)
+### Scene Tools (10)
 | Tool | Description |
 |------|-------------|
 | `get_scene_tree` | Live scene tree with hierarchy |
@@ -158,6 +163,7 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `play_scene` | Run scene (main/current/custom) |
 | `stop_scene` | Stop running scene |
 | `save_scene` | Save current scene to disk |
+| `get_scene_exports` | List @export variables of all scripted nodes in a scene file |
 
 ### Node Tools (17)
 | Tool | Description |
@@ -176,11 +182,11 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `get_node_groups` | Get groups a node belongs to |
 | `set_node_groups` | Set node group membership |
 | `find_nodes_in_group` | Find all nodes in a group |
-| `get_editor_selection` | Get currently selected scene nodes |
-| `select_nodes` | Select, focus, and inspect scene nodes |
-| `clear_editor_selection` | Clear the editor scene selection |
+| `get_editor_selection` | Get nodes selected in the Scene dock |
+| `select_nodes` | Select (and optionally focus/inspect) nodes in the Scene dock |
+| `clear_editor_selection` | Clear the Scene dock selection |
 
-### Script Tools (8)
+### Script Tools (9)
 | Tool | Description |
 |------|-------------|
 | `list_scripts` | List all scripts with class info |
@@ -188,14 +194,16 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `create_script` | Create new script with template |
 | `edit_script` | Search/replace or full edit |
 | `attach_script` | Attach script to node |
-| `get_open_scripts` | List scripts open in editor |
 | `validate_script` | Validate GDScript syntax |
-| `search_in_files` | Search content in project files |
+| `close_script` | Close a script editor tab; refuses on unsaved edits unless told to discard (Godot 4.7+) |
+| `reload_open_scripts` | Reload open scripts from disk, keeping unsaved buffers (Godot 4.7+) |
+| `get_open_scripts` | List scripts open in editor |
 
-### Editor Tools (9)
+### Editor Tools (15)
 | Tool | Description |
 |------|-------------|
 | `get_editor_errors` | Get errors and stack traces |
+| `get_output_log` | Get output panel content |
 | `get_editor_screenshot` | Capture editor viewport |
 | `get_game_screenshot` | Capture running game |
 | `execute_editor_script` | Run arbitrary GDScript in editor |
@@ -203,9 +211,14 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `get_signals` | Get all signals of a node with connections |
 | `reload_plugin` | Reload the MCP plugin (auto-reconnect) |
 | `reload_project` | Rescan filesystem and reload scripts |
-| `get_output_log` | Get output panel content |
+| `compare_screenshots` | Compare two screenshots |
+| `set_auto_dismiss` | Auto-dismiss blocking editor dialogs ("Reload from disk?" etc.) |
+| `get_editor_camera` | Get 3D editor camera position/rotation/FOV (+ snap settings on 4.6+) |
+| `set_editor_camera` | Move the 3D editor camera to frame a view |
+| `get_unsaved_state` | Report open scenes/scripts with unsaved changes (unsaved lists need Godot 4.7+) |
+| `save_all` | Save all open scenes and modified script buffers, report what was saved (scripts need Godot 4.7+) |
 
-### Input Tools (7)
+### Input Tools (5)
 | Tool | Description |
 |------|-------------|
 | `simulate_key` | Simulate keyboard key press/release |
@@ -213,10 +226,14 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `simulate_mouse_move` | Simulate mouse movement |
 | `simulate_action` | Simulate Godot Input Action |
 | `simulate_sequence` | Sequence of input events with frame delays |
+
+### Input Map Tools (2)
+| Tool | Description |
+|------|-------------|
 | `get_input_actions` | List all input actions |
 | `set_input_action` | Create/modify input action |
 
-### Runtime Tools (19)
+### Runtime Tools (20)
 | Tool | Description |
 |------|-------------|
 | `get_game_scene_tree` | Scene tree of running game |
@@ -224,19 +241,21 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `set_game_node_property` | Set node property in running game |
 | `execute_game_script` | Run GDScript in game context |
 | `capture_frames` | Multi-frame screenshot capture |
+| `record_frames` | Record many frames to PNG files on disk |
 | `monitor_properties` | Record property values over time |
+| `watch_signals` | Log signal emissions on nodes over a duration |
 | `start_recording` | Start input recording |
 | `stop_recording` | Stop input recording |
 | `replay_recording` | Replay recorded input |
 | `find_nodes_by_script` | Find game nodes by script |
 | `get_autoload` | Get autoload node properties |
-| `batch_get_properties` | Batch get multiple node properties |
 | `find_ui_elements` | Find UI elements in game |
 | `click_button_by_text` | Click button by text content |
 | `wait_for_node` | Wait for node to appear |
 | `find_nearby_nodes` | Find nodes near position |
 | `navigate_to` | Navigate to target position |
 | `move_to` | Walk character to target |
+| `batch_get_properties` | Batch get multiple node properties |
 
 ### Animation Tools (6)
 | Tool | Description |
@@ -258,7 +277,7 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `tilemap_get_info` | TileMapLayer info and tile set sources |
 | `tilemap_get_used_cells` | List of used cells |
 
-### Theme & UI Tools (6)
+### Theme & UI Tools (8)
 | Tool | Description |
 |------|-------------|
 | `create_theme` | Create Theme resource file |
@@ -266,6 +285,8 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `set_theme_constant` | Set theme constant override |
 | `set_theme_font_size` | Set theme font size override |
 | `set_theme_stylebox` | Set StyleBoxFlat override |
+| `setup_control` | Configure Control/Container layout in one call |
+| `add_virtual_joystick` | Add an on-screen VirtualJoystick bound to input actions (Godot 4.7+) |
 | `get_theme_info` | Get theme overrides info |
 
 ### Profiling Tools (2)
@@ -274,17 +295,16 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `get_performance_monitors` | All performance monitors (FPS, memory, physics, etc.) |
 | `get_editor_performance` | Quick performance summary |
 
-### Batch & Refactoring Tools (8)
+### Batch & Refactoring Tools (7)
 | Tool | Description |
 |------|-------------|
 | `find_nodes_by_type` | Find all nodes of a type |
 | `find_signal_connections` | Find all signal connections in scene |
 | `batch_set_property` | Set property on all nodes of a type |
+| `batch_add_nodes` | Add a whole node tree in one call |
 | `find_node_references` | Search project files for pattern |
 | `get_scene_dependencies` | Get resource dependencies |
 | `cross_scene_set_property` | Set property across all scenes |
-| `find_script_references` | Find where script/resource is used |
-| `detect_circular_dependencies` | Find circular scene dependencies |
 
 ### Shader Tools (6)
 | Tool | Description |
@@ -296,42 +316,42 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `set_shader_param` | Set shader parameter |
 | `get_shader_params` | Get all shader parameters |
 
-### Export Tools (3)
+### Export Tools (4)
 | Tool | Description |
 |------|-------------|
 | `list_export_presets` | List export presets |
 | `export_project` | Get export command for preset |
+| `export_patch_pck` | Export a patch PCK with only files changed since given base packs |
 | `get_export_info` | Export-related project info |
 
-### Resource Tools (6)
+### Resource Tools (4)
 | Tool | Description |
 |------|-------------|
 | `read_resource` | Read .tres resource properties |
 | `edit_resource` | Edit resource properties |
 | `create_resource` | Create new .tres resource |
 | `get_resource_preview` | Get resource thumbnail |
-| `add_autoload` | Register autoload singleton |
-| `remove_autoload` | Remove autoload singleton |
 
 ### Physics Tools (6)
 | Tool | Description |
 |------|-------------|
-| `setup_physics_body` | Configure physics body properties |
 | `setup_collision` | Add collision shapes to nodes |
 | `set_physics_layers` | Set collision layer/mask |
 | `get_physics_layers` | Get collision layer/mask info |
-| `get_collision_info` | Get collision shape details |
 | `add_raycast` | Add RayCast2D/3D node |
+| `setup_physics_body` | Configure physics body properties |
+| `get_collision_info` | Get collision shape details |
 
-### 3D Scene Tools (6)
+### 3D Scene Tools (7)
 | Tool | Description |
 |------|-------------|
 | `add_mesh_instance` | Add MeshInstance3D with primitive mesh |
-| `setup_camera_3d` | Configure Camera3D properties |
 | `setup_lighting` | Add/configure light nodes |
-| `setup_environment` | Configure WorldEnvironment |
-| `add_gridmap` | Set up GridMap node |
 | `set_material_3d` | Set StandardMaterial3D properties |
+| `setup_environment` | Configure WorldEnvironment |
+| `setup_camera_3d` | Configure Camera3D properties |
+| `add_gridmap` | Set up GridMap node |
+| `get_gridmap_info` | Inspect a GridMap: MeshLibrary, bounds, per-item counts, filtered cells (octant summary on 4.7+) |
 
 ### Particle Tools (5)
 | Tool | Description |
@@ -342,51 +362,46 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `apply_particle_preset` | Apply preset (fire, smoke, sparks, etc.) |
 | `get_particle_info` | Get particle system details |
 
-### Navigation Tools (6)
+### Navigation Tools (5)
 | Tool | Description |
 |------|-------------|
 | `setup_navigation_region` | Configure NavigationRegion |
-| `setup_navigation_agent` | Configure NavigationAgent |
 | `bake_navigation_mesh` | Bake navigation mesh |
+| `setup_navigation_agent` | Configure NavigationAgent |
 | `set_navigation_layers` | Set navigation layers |
 | `get_navigation_info` | Get navigation setup info |
 
 ### Audio Tools (6)
 | Tool | Description |
 |------|-------------|
-| `add_audio_player` | Add AudioStreamPlayer node |
-| `add_audio_bus` | Add audio bus |
-| `add_audio_bus_effect` | Add effect to audio bus |
-| `set_audio_bus` | Configure audio bus properties |
 | `get_audio_bus_layout` | Get audio bus layout info |
+| `add_audio_bus` | Add audio bus |
+| `set_audio_bus` | Configure audio bus properties |
+| `add_audio_bus_effect` | Add effect to audio bus |
+| `add_audio_player` | Add AudioStreamPlayer node |
 | `get_audio_info` | Get audio-related node info |
 
-### AnimationTree Tools (4)
+### AnimationTree Tools (9)
 | Tool | Description |
 |------|-------------|
 | `create_animation_tree` | Create AnimationTree |
 | `get_animation_tree_structure` | Get tree structure |
-| `set_tree_parameter` | Set AnimationTree parameter |
 | `add_state_machine_state` | Add state to state machine |
-
-### State Machine Tools (3)
-| Tool | Description |
-|------|-------------|
 | `remove_state_machine_state` | Remove state from state machine |
 | `add_state_machine_transition` | Add transition between states |
 | `remove_state_machine_transition` | Remove state transition |
-
-### Blend Tree Tools (1)
-| Tool | Description |
-|------|-------------|
 | `set_blend_tree_node` | Configure blend tree nodes |
+| `set_tree_parameter` | Set AnimationTree parameter |
+| `setup_ik_modifier` | Add and configure an IK SkeletonModifier3D (TwoBoneIK3D, CCDIK3D, FABRIK3D, ...) on a Skeleton3D (Godot 4.6+) |
 
-### Analysis & Search Tools (4)
+### Analysis & Search Tools (6)
 | Tool | Description |
 |------|-------------|
-| `analyze_scene_complexity` | Analyze scene performance |
-| `analyze_signal_flow` | Map signal connections |
 | `find_unused_resources` | Find unreferenced resources |
+| `analyze_signal_flow` | Map signal connections |
+| `analyze_scene_complexity` | Analyze scene performance |
+| `find_script_references` | Find where script/resource is used |
+| `detect_circular_dependencies` | Find circular scene dependencies |
 | `get_project_statistics` | Get project-wide statistics |
 
 ### Testing & QA Tools (6)
@@ -395,9 +410,23 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `run_test_scenario` | Run automated test scenario |
 | `assert_node_state` | Assert node property values |
 | `assert_screen_text` | Check for text on screen |
-| `compare_screenshots` | Compare two screenshots |
 | `run_stress_test` | Run performance stress test |
+| `set_game_speed` | Read/set the running game's Engine.time_scale (slow motion / fast-forward) |
 | `get_test_report` | Get test results report |
+
+### Headless Tools (3)
+| Tool | Description |
+|------|-------------|
+| `run_headless_scene` | Run a scene in a separate headless Godot process (e.g. a project's test suite) |
+| `run_headless_script` | Run an `extends SceneTree` script with `godot --headless --script` |
+| `get_godot_executable` | Path of the editor's Godot binary, project path and platform |
+
+### Android Tools (3)
+| Tool | Description |
+|------|-------------|
+| `list_android_devices` | List Android devices visible to adb |
+| `get_android_preset_info` | Read an Android export preset's package name/export path |
+| `deploy_to_android` | Export APK, install via adb and launch (like Remote Deploy) |
 
 ## Key Features
 
@@ -413,36 +442,35 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 
 | Category | Godot MCP Pro | GDAI MCP ($19) | tomyud1 (free) | Dokujaa (free) | Coding-Solo (free) | ee0pdt (free) | bradypp (free) |
 |----------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Project | 7 | 5 | 4 | 0 | 2 | 2 | 2 |
-| Scene | 9 | 8 | 11 | 9 | 3 | 4 | 5 |
-| Node | **14** | 8 | 0 | 8 | 2 | 3 | 0 |
-| Script | **8** | 5 | 6 | 4 | 0 | 5 | 0 |
-| Editor | **9** | 5 | 1 | 5 | 1 | 3 | 2 |
+| Project | 10 | 5 | 4 | 0 | 2 | 2 | 2 |
+| Scene | 10 | 8 | 11 | 9 | 3 | 4 | 5 |
+| Node | **17** | 8 | 0 | 8 | 2 | 3 | 0 |
+| Script | **9** | 5 | 6 | 4 | 0 | 5 | 0 |
+| Editor | **15** | 5 | 1 | 5 | 1 | 3 | 2 |
 | Input | **7** | 2 | 0 | 0 | 0 | 0 | 0 |
-| Runtime | **19** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Runtime | **20** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Animation | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | TileMap | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| Theme/UI | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Theme/UI | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Profiling | **2** | 0 | 0 | 0 | 0 | 0 | 0 |
-| Batch/Refactor | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Batch/Refactor | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Shader | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| Export | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
-| Resource | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Export | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Resource | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Physics | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| 3D Scene | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
+| 3D Scene | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Particle | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
-| Navigation | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Navigation | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Audio | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| AnimationTree | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
-| State Machine | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
-| Blend Tree | **1** | 0 | 0 | 0 | 0 | 0 | 0 |
-| Analysis | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
+| AnimationTree | **9** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Analysis | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Testing/QA | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Asset/AI | 0 | 0 | 1 | 6 | 0 | 0 | 0 |
 | Material | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | Other | 0 | 0 | 9 | 5 | 5 | 2 | 1 |
+| Headless | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Android Deploy | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
-| **Total** | **175** | ~30 | **32** | **39** | **13** | **19** | **10** |
+| **Total** | **187** | ~30 | **32** | **39** | **13** | **19** | **10** |
 
 ### Feature Matrix
 
@@ -467,20 +495,19 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 |----------|-------|----------------|
 | **Animation** | 6 tools | Create animations, add tracks, set keyframes — all programmatically |
 | **TileMap** | 6 tools | Set cells, fill rects, query tile data — essential for 2D level design |
-| **Theme/UI** | 6 tools | StyleBox, colors, fonts — build UI themes without manual editor work |
+| **Theme/UI** | 8 tools | StyleBox, colors, fonts — build UI themes without manual editor work |
 | **Profiling** | 2 tools | FPS, memory, draw calls, physics — performance monitoring |
-| **Batch/Refactor** | 8 tools | Find by type, batch property changes, cross-scene updates, dependency analysis |
+| **Batch/Refactor** | 7 tools | Find by type, batch property changes, cross-scene updates, dependency analysis |
 | **Shader** | 6 tools | Create/edit shaders, assign materials, set parameters |
-| **Export** | 3 tools | List presets, get export commands, check templates |
+| **Export** | 4 tools | List presets, get export commands, check templates |
 | **Physics** | 6 tools | Set up collision shapes, bodies, raycasts, and layer management |
-| **3D Scene** | 6 tools | Add meshes, cameras, lights, environment, GridMap support |
+| **3D Scene** | 7 tools | Add meshes, cameras, lights, environment, GridMap support |
 | **Particle** | 5 tools | Create particles with custom materials, presets, and gradients |
-| **Navigation** | 6 tools | Configure navigation regions, agents, pathfinding, baking |
+| **Navigation** | 5 tools | Configure navigation regions, agents, pathfinding, baking |
 | **Audio** | 6 tools | Complete audio bus system, effects, players, live management |
-| **AnimationTree** | 4 tools | Build state machines with transitions and blend trees |
-| **State Machine** | 3 tools | Advanced state machine management for complex animations |
+| **AnimationTree** | 9 tools | State machines, transitions, blend trees and IK modifiers |
 | **Testing/QA** | 6 tools | Automated testing, assertions, stress testing, screenshot comparison |
-| **Runtime** | 19 tools | Inspect and control game at runtime: inspect, record, replay, navigate |
+| **Runtime** | 20 tools | Inspect and control game at runtime: inspect, record, replay, navigate |
 
 ### Architecture Advantages
 

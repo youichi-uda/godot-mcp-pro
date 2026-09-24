@@ -160,14 +160,58 @@ func _get_project_settings(params: Dictionary) -> Dictionary:
 		else:
 			return error_not_found("Setting '%s'" % key)
 
+	var non_default_only: bool = optional_bool(params, "non_default_only", false)
+
 	# If section requested, return all settings in that section
 	var settings := {}
+	var defaults := {}
 	for prop in ProjectSettings.get_property_list():
 		var name: String = prop["name"]
 		if section.is_empty() or name.begins_with(section):
+			if non_default_only:
+				if not ProjectSettings.has_setting(name):
+					continue  # "ProjectSettings" category entry, "script", ...
+				var state := _setting_default_state(name)
+				if not state["differs"]:
+					continue
+				defaults[name] = state["default"]
 			settings[name] = str(ProjectSettings.get_setting(name))
 
-	return success({"settings": settings, "count": settings.size()})
+	var payload := {"settings": settings, "count": settings.size()}
+	if non_default_only:
+		payload["defaults"] = defaults
+		payload["note"] = "Settings whose value differs from the engine default (property_get_revert), including custom keys that have no default (default null). Reflects the editor's in-memory state, which may include changes not yet saved to project.godot."
+	return success(payload)
+
+
+## Whether a project setting differs from its engine default.
+##
+## ProjectSettings.get_changed_settings() (Godot 4.6+) is NOT this: measured on
+## 4.6.2 and 4.7.2 it holds the keys touched since the last deferred
+## settings_changed emission, which is cleared about once a frame — at startup
+## it lists every registered setting, afterwards it is almost always empty. The
+## default comes from property_get_revert(), which ProjectSettings implements
+## on every supported version (4.5+). Custom keys have no default and revert to
+## null, so they always count as differing.
+func _setting_default_state(name: String) -> Dictionary:
+	var current: Variant = ProjectSettings.get_setting(name)
+	if not ProjectSettings.property_can_revert(name):
+		return {"differs": true, "default": null}
+	var default_value: Variant = ProjectSettings.property_get_revert(name)
+	var differs: bool
+	if (current is int or current is float) and (default_value is int or default_value is float):
+		# project.godot may store 1 for a float setting whose default is 1.0.
+		differs = not is_equal_approx(float(current), float(default_value))
+	elif typeof(current) != typeof(default_value):
+		# == between unrelated Variant types raises; different types differ.
+		differs = true
+	elif current is Array or current is Dictionary:
+		# Input actions hold InputEvent objects, which == compares by identity:
+		# compare the serialized form instead.
+		differs = var_to_str(current) != var_to_str(default_value)
+	else:
+		differs = current != default_value
+	return {"differs": differs, "default": str(default_value) if default_value != null else null}
 
 
 func _set_project_setting(params: Dictionary) -> Dictionary:

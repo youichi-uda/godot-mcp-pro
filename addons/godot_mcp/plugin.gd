@@ -17,11 +17,28 @@ const _MCP_TEMP_FILES: Array[String] = [
 var websocket_server: Node
 var command_router: Node
 var status_panel: Control
+# EditorDock hosting status_panel on Godot 4.6+; null on 4.5, where the panel
+# goes through the legacy add_control_to_bottom_panel path instead.
+var _status_dock: Control
 var auto_dismiss_dialogs: bool = false
+# True inside a headless child editor started by MCP itself (export_patch_pck
+# runs `godot --headless --export-patch`, which loads editor plugins). There
+# the plugin must stay completely inert: connecting to the MCP server ports
+# would let it steal commands meant for the real editor, injecting/removing
+# autoloads would rewrite project.godot under the live editor, and cleaning
+# up temp files on exit would delete the live editor's in-flight IPC files,
+# which live in the same user:// directory.
+var _inert := false
 # Track which autoloads THIS session injected (vs project-owned)
 var _session_injected_autoloads: Array[String] = []
 
 func _enter_tree() -> void:
+	if _should_stay_inert():
+		_inert = true
+		# _process polls shared user:// files (debugger-continue requests);
+		# an export child must not consume the live editor's.
+		set_process(false)
+		return
 	_register_project_settings()
 
 	# Create command router
@@ -39,8 +56,7 @@ func _enter_tree() -> void:
 	# Create status panel
 	var panel_scene: PackedScene = preload("res://addons/godot_mcp/ui/status_panel.tscn")
 	status_panel = panel_scene.instantiate()
-	var panel_button: Button = add_control_to_bottom_panel(status_panel, "MCP Pro")
-	_apply_panel_icon.call_deferred(panel_button)
+	_add_status_panel()
 	status_panel.call_deferred("setup", websocket_server, command_router)
 
 	# Inject MCP autoloads into project settings
@@ -54,7 +70,21 @@ func _enter_tree() -> void:
 	print("[MCP] Godot MCP Pro v%s started (ports 6505-6514)" % ver)
 
 
+## The plugin has nothing to do in a command-line export (the editor is only
+## loaded to pack the project) and must not touch shared state there; the same
+## applies to the headless child editors MCP starts, marked by an env var.
+func _should_stay_inert() -> bool:
+	if OS.has_environment("GODOT_MCP_HEADLESS_CHILD"):
+		return true
+	for arg in OS.get_cmdline_args():
+		if arg in ["--export-release", "--export-debug", "--export-pack", "--export-patch"]:
+			return true
+	return false
+
+
 func _exit_tree() -> void:
+	if _inert:
+		return
 	# Remove MCP autoloads and clean up temp files
 	_remove_autoloads()
 	_cleanup_temp_files()
@@ -62,7 +92,14 @@ func _exit_tree() -> void:
 	if websocket_server:
 		websocket_server.stop_server()
 
-	if status_panel:
+	if _status_dock:
+		# remove_dock only detaches the dock; freeing it also frees the
+		# status panel inside it.
+		call("remove_dock", _status_dock)
+		_status_dock.queue_free()
+		_status_dock = null
+		status_panel = null
+	elif status_panel:
 		remove_control_from_bottom_panel(status_panel)
 		status_panel.queue_free()
 
@@ -75,23 +112,41 @@ func _exit_tree() -> void:
 	print("[MCP] Godot MCP Pro stopped")
 
 
-## Gives the bottom-panel tab an icon (issue #38).
-## Godot 4.6+ wraps every bottom-panel control in an EditorDock and draws the
-## tab icon from its `dock_icon` (shown when Editor Settings >
-## Interface > Editor > Bottom Dock Tab Style includes icons). Older versions
-## only have the Button returned by add_control_to_bottom_panel. The wrapper
-## is resolved by class name so this still parses on 4.5 and earlier, where
-## EditorDock does not exist. The SVG is rasterised at the editor scale
-## instead of relying on the import pipeline, so it also works on the very
-## first enable before the file has been imported.
+## Adds the status panel to the editor's bottom panel.
+## Godot 4.6+ has a real dock API: the panel is placed in an EditorDock whose
+## default slot is the bottom panel, which also gives it a proper tab icon
+## (shown when Editor Settings > Interface > Editor > Bottom Dock Tab Style
+## includes icons) and lets the user float it. EditorDock and add_dock are
+## reached by name through ClassDB/call(), so this file still parses on 4.5,
+## where neither exists; 4.5 keeps the legacy add_control_to_bottom_panel.
+func _add_status_panel() -> void:
+	if ClassDB.class_exists("EditorDock") and has_method("add_dock"):
+		_status_dock = ClassDB.instantiate("EditorDock")
+		_status_dock.name = "MCPProDock"
+		_status_dock.set("title", "MCP Pro")
+		_status_dock.set("default_slot", ClassDB.class_get_integer_constant("EditorDock", "DOCK_SLOT_BOTTOM"))
+		# Same layouts Godot gives a legacy bottom-panel control: the panel is
+		# laid out for a wide strip, not a narrow side column.
+		_status_dock.set("available_layouts",
+			ClassDB.class_get_integer_constant("EditorDock", "DOCK_LAYOUT_HORIZONTAL")
+			| ClassDB.class_get_integer_constant("EditorDock", "DOCK_LAYOUT_FLOATING"))
+		var icon := _load_panel_icon()
+		if icon != null:
+			_status_dock.set("dock_icon", icon)
+		_status_dock.add_child(status_panel)
+		call("add_dock", _status_dock)
+		return
+	var panel_button: Button = add_control_to_bottom_panel(status_panel, "MCP Pro")
+	_apply_panel_icon.call_deferred(panel_button)
+
+
+## Gives the legacy (Godot 4.5) bottom-panel tab button an icon (issue #38).
+## The SVG is rasterised at the editor scale instead of relying on the import
+## pipeline, so it also works on the very first enable before the file has
+## been imported.
 func _apply_panel_icon(button: Button) -> void:
 	var icon := _load_panel_icon()
-	if icon == null:
-		return
-	var wrapper: Node = status_panel.get_parent() if status_panel else null
-	if wrapper != null and wrapper.get_class() == "EditorDock":
-		wrapper.set("dock_icon", icon)
-	elif button != null:
+	if icon != null and button != null and is_instance_valid(button):
 		button.icon = icon
 
 
@@ -185,6 +240,8 @@ var _dialog_check_timer: float = 0.0
 const _DIALOG_CHECK_INTERVAL: float = 0.5  # Check every 0.5 seconds
 
 func _process(delta: float) -> void:
+	if _inert:
+		return
 	# Check if game inspector requested debugger continue
 	var flag_path := OS.get_user_data_dir() + "/mcp_debugger_continue"
 	if FileAccess.file_exists(flag_path):

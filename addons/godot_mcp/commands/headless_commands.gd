@@ -84,14 +84,14 @@ func _run_headless_script(params: Dictionary) -> Dictionary:
 	return await _run_headless(params, ["--script", script_path], script_path)
 
 
-func _run_headless(params: Dictionary, target_args: Array, target: String) -> Dictionary:
+func _run_headless(params: Dictionary, target_args: Array, target: String, max_timeout_sec: float = _MAX_TIMEOUT_SEC) -> Dictionary:
 	var godot_bin := OS.get_executable_path()
 	if godot_bin.is_empty():
 		return error_internal("Could not determine the Godot executable path")
 
 	var project_dir := ProjectSettings.globalize_path("res://")
 	var timeout_sec: float = clampf(
-		optional_float(params, "timeout_sec", _DEFAULT_TIMEOUT_SEC), 1.0, _MAX_TIMEOUT_SEC
+		optional_float(params, "timeout_sec", _DEFAULT_TIMEOUT_SEC), 1.0, maxf(max_timeout_sec, 1.0)
 	)
 
 	var godot_args: Array = ["--headless", "--path", project_dir]
@@ -123,6 +123,23 @@ func _run_headless(params: Dictionary, target_args: Array, target: String) -> Di
 						"Argument %s contains a line break, which would terminate the Windows batch command line." % arg
 					)
 			godot_args.append(arg)
+
+	# Validate EVERY argument, not only the caller's extra args: target args
+	# built from tool parameters (scene paths, export output paths, preset
+	# names) end up on the same batch command line, and one embedded quote or
+	# line break there would let the rest of the value run as a shell command.
+	if is_windows:
+		for a: Variant in godot_args:
+			var arg := str(a)
+			if arg.contains('"'):
+				return error_invalid_params(
+					"Argument %s contains a double quote, which a Windows batch runner cannot represent." % arg
+				)
+			if arg.contains("
+") or arg.contains(""):
+				return error_invalid_params(
+					"Argument %s contains a line break, which would terminate the Windows batch command line." % arg
+				)
 
 	_run_counter += 1
 	var prefix := "user://mcp_headless_%d_%d" % [OS.get_process_id(), _run_counter]

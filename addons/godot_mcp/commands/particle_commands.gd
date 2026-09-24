@@ -253,9 +253,87 @@ func _set_particle_material(params: Dictionary) -> Dictionary:
 		mat.attractor_interaction_enabled = optional_bool(params, "attractor_interaction_enabled")
 		changes.append("attractor_interaction_enabled")
 
+	# Godot 4.7+ ParticleProcessMaterial additions: per-axis 3D scale and
+	# rotation, and inheriting the emitter's scale. Set through set() after a
+	# property-list check so this file still parses and runs on 4.5/4.6.
+	var err_47 := _apply_particle_47_params(mat, params, changes)
+	if not err_47.is_empty():
+		return err_47
+
 	if not changes.is_empty():
 		set_property_with_undo(node, "process_material", mat, "MCP: Set particle material")
 	return success({"node_path": node_path, "changes": changes})
+
+
+## Request key -> the use_* switch it belongs to, for the ParticleProcessMaterial
+## vector properties added in Godot 4.7.
+const _PARTICLE_47_VECTOR_PARAMS := {
+	"scale_3d_min": "use_scale_3d",
+	"scale_3d_max": "use_scale_3d",
+	"rotation_3d_min": "use_rotation_3d",
+	"rotation_3d_max": "use_rotation_3d",
+	"rotation_velocity_3d_min": "use_rotation_velocity_3d",
+	"rotation_velocity_3d_max": "use_rotation_velocity_3d",
+}
+const _PARTICLE_47_BOOL_PARAMS := {
+	"use_scale_3d": "use_scale_3d",
+	"use_rotation_3d": "use_rotation_3d",
+	"use_rotation_velocity_3d": "use_rotation_velocity_3d",
+	"inherit_emitter_scale": "particle_flag_inherit_emitter_scale",
+}
+
+
+func _material_has_property(mat: Object, prop: String) -> bool:
+	for p: Dictionary in mat.get_property_list():
+		if p["name"] == prop:
+			return true
+	return false
+
+
+func _apply_particle_47_params(mat: ParticleProcessMaterial, params: Dictionary, changes: Array) -> Dictionary:
+	var requested: Array = []
+	for key: String in _PARTICLE_47_BOOL_PARAMS:
+		if params.has(key):
+			requested.append(key)
+	for key: String in _PARTICLE_47_VECTOR_PARAMS:
+		if params.has(key):
+			requested.append(key)
+	if requested.is_empty():
+		return {}
+	if not _material_has_property(mat, "use_scale_3d"):
+		var running: String = Engine.get_version_info().get("string", "unknown")
+		return error(-32601, "%s require Godot 4.7+ (running %s)" % [", ".join(requested), running], {
+			"required_version": "4.7",
+			"running_version": running,
+		})
+
+	var enable_flags := {}
+	for key: String in _PARTICLE_47_VECTOR_PARAMS:
+		if not params.has(key):
+			continue
+		var v: Variant = params[key]
+		var vec: Vector3
+		if v is Dictionary:
+			vec = Vector3(float(v.get("x", 0.0)), float(v.get("y", 0.0)), float(v.get("z", 0.0)))
+		elif v is Array and v.size() >= 3:
+			vec = Vector3(float(v[0]), float(v[1]), float(v[2]))
+		elif v is float or v is int:
+			vec = Vector3.ONE * float(v)
+		else:
+			return error_invalid_params("'%s' must be {x, y, z}, [x, y, z] or a number" % key)
+		mat.set(key, vec)
+		changes.append(key)
+		enable_flags[_PARTICLE_47_VECTOR_PARAMS[key]] = true
+	# Giving a 3D min/max turns its use_* switch on, unless the caller set it.
+	for flag: String in enable_flags:
+		if not params.has(flag):
+			mat.set(flag, true)
+			changes.append(flag)
+	for key: String in _PARTICLE_47_BOOL_PARAMS:
+		if params.has(key):
+			mat.set(_PARTICLE_47_BOOL_PARAMS[key], optional_bool(params, key, false))
+			changes.append(key)
+	return {}
 
 
 func _set_particle_color_gradient(params: Dictionary) -> Dictionary:

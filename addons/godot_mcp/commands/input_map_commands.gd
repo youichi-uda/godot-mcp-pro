@@ -31,7 +31,9 @@ func _get_input_actions(params: Dictionary) -> Dictionary:
 
 		var events: Array = []
 		for event: InputEvent in InputMap.action_get_events(action):
-			events.append(_serialize_event(event))
+			var info := _serialize_event(event)
+			info["device"] = event.device
+			events.append(info)
 
 		actions[action_str] = {
 			"deadzone": InputMap.action_get_deadzone(action),
@@ -126,6 +128,16 @@ func _serialize_event(event: InputEvent) -> Dictionary:
 
 
 func _parse_event(def: Dictionary) -> InputEvent:
+	var event := _parse_event_body(def)
+	if event != null:
+		# Match Godot's own Input Map editor, which saves "All Devices" (-1).
+		# The constructor default is 0 for joypads (only the first pad) and,
+		# on 4.7+, 16/32 for keyboard/mouse; either silently narrows the binding.
+		event.device = int(def.get("device", -1))
+	return event
+
+
+func _parse_event_body(def: Dictionary) -> InputEvent:
 	var type: String = def.get("type", "")
 	match type:
 		"key":

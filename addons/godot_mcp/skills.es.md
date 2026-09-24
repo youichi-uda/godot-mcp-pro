@@ -53,6 +53,7 @@ setup_camera_3d      → cámara con SpringArm3D opcional para tercera persona
 set_material_3d      → materiales PBR (albedo, metallic, roughness, emission)
 setup_collision      → agregar shapes de colisión a cuerpos físicos
 setup_physics_body   → configurar masa, fricción, gravedad
+get_gridmap_info     → inspeccionar un GridMap: MeshLibrary, límites de celdas usadas, conteo por ítem (filtrar celdas por ítem/límites)
 ```
 
 ### 4. Escribir y Editar Scripts
@@ -65,6 +66,8 @@ edit_script    → modificar scripts existentes
   - Usa `insert_at_line` + `text` para insertar código
 validate_script → verificar errores de sintaxis sin ejecutar
 read_script    → leer contenido actual antes de editar
+reload_open_scripts → recargar desde disco las pestañas de scripts abiertas tras ediciones externas (Godot 4.7+; las pestañas con cambios sin guardar se conservan)
+close_script   → cerrar una pestaña de script (Godot 4.7+; se niega si hay cambios sin guardar salvo discard_unsaved=true)
 ```
 
 ### 5. Probar y Depurar
@@ -118,6 +121,7 @@ set_theme_color   → cambiar font_color, etc.
 set_theme_font_size → ajustar tamaño de texto
 set_theme_stylebox  → fondos, bordes, esquinas redondeadas
 connect_signal    → conectar pressed del button, value_changed, etc.
+add_virtual_joystick → joystick táctil en pantalla que activa acciones de entrada (Godot 4.7+; activa input_devices/pointing/emulate_touch_from_mouse para probarlo con el ratón)
 ```
 
 ### 8. TileMap
@@ -199,6 +203,8 @@ Después de crear o modificar scripts significativamente, usa `reload_project` p
 ### Guarda Frecuentemente
 Llama a `save_scene` después de hacer cambios significativos. Los cambios no guardados pueden perderse si el editor se recarga.
 
+Antes de editar archivos que están abiertos en el editor, o al terminar una tarea, llama a `get_unsaved_state` para ver qué está sin guardar y luego a `save_all` para guardar todas las escenas abiertas y los buffers de scripts modificados. En Godot 4.5/4.6 las listas de cambios sin guardar son `null` (desconocido, no "todo guardado") y solo se guardan las escenas; las escenas que nunca se guardaron necesitan `save_scene` con una ruta.
+
 ## Herramientas de Análisis y Depuración
 
 Cuando algo sale mal, usa estas herramientas para investigar:
@@ -221,6 +227,7 @@ assert_node_state   → verificar que las propiedades de nodos coincidan con val
 assert_screen_text  → verificar que el texto se muestre en pantalla
 compare_screenshots → pruebas de regresión visual (usa rutas de archivo, no base64)
 run_stress_test     → generar muchos nodos para probar rendimiento
+set_game_speed      → ajustar Engine.time_scale durante la ejecución: 0.25 = cámara lenta para capture_frames, 4 = avance rápido en esperas largas
 ```
 
 ## Patrones Avanzados
@@ -253,6 +260,7 @@ create_animation_tree           → configurar AnimationTree con máquina de est
 add_state_machine_state         → agregar estados (idle, walk, run, jump)
 add_state_machine_transition    → definir transiciones entre estados
 set_tree_parameter              → controlar parámetros de blend
+setup_ik_modifier               → añadir un modificador IK (TwoBoneIK3D, CCDIK3D, FABRIK3D, …) a un Skeleton3D (Godot 4.6+)
 ```
 
 ## Orden de Flujo de Trabajo Recomendado

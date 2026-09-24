@@ -53,6 +53,7 @@ setup_camera_3d      → câmera com SpringArm3D opcional para terceira pessoa
 set_material_3d      → materiais PBR (albedo, metallic, roughness, emission)
 setup_collision      → adicionar shapes de colisão a corpos físicos
 setup_physics_body   → configurar massa, atrito, gravidade
+get_gridmap_info     → inspecionar um GridMap: MeshLibrary, limites das células usadas, contagem por item (filtrar células por item/limites)
 ```
 
 ### 4. Escrever e Editar Scripts
@@ -65,6 +66,8 @@ edit_script    → modificar scripts existentes
   - Use `insert_at_line` + `text` para inserir código
 validate_script → verificar erros de sintaxe sem executar
 read_script    → ler conteúdo atual antes de editar
+reload_open_scripts → recarregar do disco as abas de scripts abertas após edições externas (Godot 4.7+; abas com alterações não salvas são mantidas)
+close_script   → fechar uma aba de script (Godot 4.7+; recusa se houver alterações não salvas, a menos que discard_unsaved=true)
 ```
 
 ### 5. Testar e Depurar
@@ -118,6 +121,7 @@ set_theme_color   → alterar font_color, etc.
 set_theme_font_size → ajustar tamanho do texto
 set_theme_stylebox  → fundos, bordas, cantos arredondados
 connect_signal    → conectar pressed do button, value_changed, etc.
+add_virtual_joystick → joystick de toque na tela que aciona ações de entrada (Godot 4.7+; ative input_devices/pointing/emulate_touch_from_mouse para testar com o mouse)
 ```
 
 ### 8. TileMap
@@ -199,6 +203,8 @@ Após criar ou modificar scripts significativamente, use `reload_project` para g
 ### Salve com Frequência
 Chame `save_scene` após fazer alterações significativas. Alterações não salvas podem ser perdidas se o editor recarregar.
 
+Antes de editar arquivos abertos no editor, ou ao terminar uma tarefa, chame `get_unsaved_state` para ver o que não foi salvo e depois `save_all` para salvar todas as cenas abertas e os buffers de scripts modificados. No Godot 4.5/4.6 as listas de itens não salvos são `null` (desconhecido, não "tudo salvo") e apenas as cenas são salvas; cenas que nunca foram salvas precisam de `save_scene` com um caminho.
+
 ## Ferramentas de Análise e Depuração
 
 Quando algo der errado, use estas ferramentas para investigar:
@@ -221,6 +227,7 @@ assert_node_state   → verificar se propriedades de nós correspondem aos valor
 assert_screen_text  → verificar se texto está exibido na tela
 compare_screenshots → teste de regressão visual (use caminhos de arquivo, não base64)
 run_stress_test     → gerar muitos nós para testar performance
+set_game_speed      → definir Engine.time_scale durante a execução: 0.25 = câmera lenta para capture_frames, 4 = acelerar esperas longas
 ```
 
 ## Padrões Avançados
@@ -253,6 +260,7 @@ create_animation_tree           → configurar AnimationTree com máquina de est
 add_state_machine_state         → adicionar estados (idle, walk, run, jump)
 add_state_machine_transition    → definir transições entre estados
 set_tree_parameter              → controlar parâmetros de blend
+setup_ik_modifier               → adicionar um modificador IK (TwoBoneIK3D, CCDIK3D, FABRIK3D, …) a um Skeleton3D (Godot 4.6+)
 ```
 
 ## Ordem de Fluxo de Trabalho Recomendada

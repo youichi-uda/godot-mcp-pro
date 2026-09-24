@@ -4,7 +4,34 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
-## Unreleased
+## v1.17.0 — 2026-09-24
+
+**Minor** — Godot 4.6 and 4.7 support work: nine new tools and several upgrades built on the new engine APIs, plus fixes for every open bug report and two community pull requests. Every addon script parses on Godot 4.4.1, 4.5.1, 4.6.2 and 4.7.2; the new features were exercised live in the editor on 4.7.2, with a smoke test on 4.4.1. APIs that only exist on newer Godot are looked up at runtime, so the addon still loads on 4.4 and those features answer with an error naming the version they need.
+
+Thanks to @aallnneess (PR #42) and @oxeron (PR #41), and to @mpergami (#39), @nidarian (#40), @gikari (#38) and @emirhanaydin (#43) for the reports.
+
+### Added — new tools (178 → 187)
+- **`get_unsaved_state`** — unsaved scenes and scripts, plus open scenes and scripts. The unsaved lists need Godot 4.7+; on older versions they are `null` (unknown), never an empty list that would read as "clean".
+- **`save_all`** — saves every open scene (all versions) and every script buffer (4.7+), reporting what was unsaved before and what is still unsaved after.
+- **`close_script`** (4.7+) — closes a script tab. Godot discards unsaved buffer edits on close without asking, so the tool refuses a modified buffer unless `discard_unsaved=true`.
+- **`reload_open_scripts`** (4.7+) — reloads open script buffers from disk; buffers with unsaved edits are kept and listed.
+- **`get_gridmap_info`** — GridMap summary: mesh library, cell size, bounds, per-item counts, an optional filtered and capped cell list, and on 4.7 an octant summary, so large maps do not flood the context.
+- **`setup_ik_modifier`** (4.6+) — adds TwoBoneIK3D, CCDIK3D, FABRIK3D, JacobianIK3D or SplineIK3D under a Skeleton3D, validating that the bones exist and form a chain. Undoable.
+- **`set_game_speed`** — reads or sets the running game's `Engine.time_scale` (clamped to 0.05–20) for slow-motion inspection or fast-forwarded tests. Physics tick rate is deliberately left alone and reported.
+- **`add_virtual_joystick`** (4.7+) — adds a VirtualJoystick bound to four Input Map actions, warning about actions that do not exist and about touch-only input. Undoable.
+- **`export_patch_pck`** — exports a patch PCK against one or more base packs through Godot's own `--export-patch` in a headless child process. A plugin cannot reach the configured preset object from script, so the CLI is the only way to honour the real preset. Release mode only, as the CLI has no debug variant. Refuses to write over any base pack (explicit or from the preset), rejects paths a batch command line cannot carry, and says plainly when nothing changed since the base packs.
+
+### Added — upgrades to existing tools
+- **`edit_script` / `create_script`**: a forced write to a script that is open in the editor now reloads its buffer on 4.7+ and reports `editor_buffer_reloaded`, so the editor shows what is on disk instead of a stale buffer or a "files changed" prompt. A buffer with unsaved edits is never reloaded; the response warns instead.
+- **`setup_lighting`**: `AreaLight3D` (4.7+) with `area_size`, `area_range`, `area_attenuation`, `area_normalize_energy` and `area_texture`.
+- **AnimationTree**: 1D/2D blend-space states and blend-tree nodes with points; named points and cyclic sync modes on 4.7; OneShot `abort_on_reset` on 4.6+. `get_animation_tree_structure` reports all of them.
+- **`set_particle_material`**: 4.7 per-axis 3D scale and rotation and `inherit_emitter_scale`.
+- **`setup_control`**: `pivot_offset_ratio` (4.6+), `max_size` and `offset_transform` (4.7+).
+- **`get_project_settings`**: `non_default_only` returns only settings that differ from the engine default, with a `defaults` map. Implemented by comparing against each setting's revert value, because 4.6's `get_changed_settings()` only lists keys changed since the last frame, not changes from the default.
+- **`get_collision_info`**: reports the physics engine actually in use. `DEFAULT` resolves to Godot Physics on 4.5–4.7; the 4.6+ editor writes Jolt explicitly into new projects.
+- **`get_editor_camera`**: includes the 3D snap settings (`snap_3d`) on 4.6+.
+- **`set_input_action`**: new `device` field; `get_input_actions` reports each event's device.
+- **MCP Pro panel**: a real editor dock on 4.6+ (bottom panel by default, can be floated), with an icon (issue #38).
 
 ### Fixed — High
 - **Every runtime command timed out for projects whose name contains a period** (issue #39, reported by mpergami). `get_game_user_dir()` rebuilt the running game's `user://` directory from `application/config/name` with `validate_filename().replace(".", "_")`, which is not how Godot derives it: "MyGame_V0.04" really lives under `app_userdata/MyGame_V0.04`, but request files were written to `MyGame_V0_04`, so the game never saw them. The sanitisation is now a port of Godot's own `OS::get_safe_dir_name` (replace `: * ? " < > | / \` with `-`, trim whitespace, keep everything else), which also fixes names containing `%` or the other characters `validate_filename` handled differently.
@@ -12,14 +39,23 @@ All notable changes to Godot MCP Pro will be documented in this file.
 - **`edit_script` could report success for an edit that never persisted** (PR #42, aallnneess). The write path called `store_string()`, counted the replacements and validated the new text — but nothing ever looked at the file again, so a second writer that overwrote the file right after the write (a parallel MCP session riding the same editor through another server port, a stale duplicate tool call, an editor buffer save) silently reverted the edit while the caller had been told it landed. Reported against a live setup with four MCP server processes attached to one editor, where edits vanished intermittently with the file's mtime advancing but its md5 staying identical to the pre-edit content. `edit_script` / `create_script` / `edit_shader` / `create_shader` now read the file back after writing and return a `-32003` error carrying `md5_expected` / `md5_on_disk` when the bytes on disk do not match what was just written; a fire-and-forget re-check ~5s later logs a diagnosis to the editor Output when a late overwrite still happens; and `edit_script` answers include `disk_verified: true` to say the result was proven, not assumed.
 - **Concurrent text-file edits could interleave into a lost update** (PR #42, aallnneess). Several MCP sessions can be attached to one editor at once (each through its own server port), and command handlers run as overlapping coroutines — two read-modify-write cycles on the same file could race. `edit_script` and `edit_shader` now run their read-to-write section exclusively per file path (`run_path_serialized`), so one session's edit completes before the next one reads the file.
 - **The delayed persistence re-check no longer reports the addon's own follow-up writes.** A `create_script` followed within 5s by an `edit_script` of the same file is the normal workflow, not a lost edit; the check is skipped when a later MCP write has superseded it, and a genuine late overwrite is reported as a warning (not an error) carrying both md5s.
+- **Synthetic input was silently dropped when two input tools were called back to back.** Editor and game exchange input through a single file that the game reads and deletes once per frame, so a `simulate_key` followed immediately by `simulate_mouse_click` overwrote the key before the game had read it. Reproduced live: the key never reached `_input`. Writers now wait for the previous payload to be consumed (up to 1s), and the game queues each new payload behind a running sequence with its own timing instead of replacing or flattening it. A timed `simulate_key` hold (`duration`) is now released by the game, measured from when the press is actually dispatched, so a hold queued behind another sequence keeps its length; the server still releases the key itself when talking to an older addon. The same wait covers `run_test_scenario` input steps and `run_stress_test`.
+- **Input Map bindings created through MCP only matched the first joypad.** `set_input_action` left each event on the constructor default device 0 (and on 4.7, 16/32 for keyboard/mouse), whereas Godot's own Input Map editor saves "All Devices" (-1). Events now default to -1, matching the editor.
+- **`--3d` mode exceeded the 100-tool cap it exists for.** It had grown to 103 tools in v1.15.0 when the selection tools joined the core set, and would have reached 108 with this release. It now omits eight core tools with direct alternatives or little 3D relevance and is back to exactly 100; a test enforces the cap.
 
-### Added
-- **Bottom-panel tab icon** (issue #38, requested by gikari). On Godot 4.6+ the icon is set through the `EditorDock` wrapper and shows when *Editor Settings > Interface > Editor > Bottom Dock Tab Style* includes icons; older versions get it on the tab button. The SVG is rasterised at the editor scale, so it also works on the very first enable before the import pipeline has seen the file.
+### Fixed — Medium
+- **The headless runner now checks every argument, not only the caller's extra args, for characters a Windows batch command line cannot carry.** Arguments built from tool parameters (scene paths, export paths, preset names) share that command line, so an embedded quote could have ended the quoted value early.
+- **The plugin stays inert during command-line exports** (`--export-release`, `--export-debug`, `--export-pack`, `--export-patch`), such as the command `export_project` returns or the child `export_patch_pck` starts. Those runs load editor plugins, so the plugin used to connect to the MCP server ports (where it could take commands meant for the live editor), re-inject autoloads into `project.godot`, and on exit delete the live editor's IPC temp files, which share the same `user://` directory. Per-frame polling is switched off there too, so an export child cannot consume a debugger-continue request meant for the live editor.
+- **Simulated keyboard and mouse events carry Godot 4.7's device ids** (`DEVICE_ID_KEYBOARD` = 16, `DEVICE_ID_MOUSE` = 32) explicitly, matching real input so game code that filters on `event.device` sees what a player would produce. Earlier versions keep device 0.
 
 ### Changed
 - **`execute_game_script` wrapper no longer declares an unused `_mcp_error`** (PR #41, oxeron; issue #43, emirhanaydin), which raised `UNUSED_PRIVATE_CLASS_VARIABLE` in the debugger on every call.
 - **`edit_script` internals:** the read-modify-write helper returns the same `success()` / error shape as every other handler.
+- **Tool count**: Full 187, Lite 88, 3D 100, Minimal 35.
 
+### Notes
+- Verified: parse checks of all 36 addon scripts on 4.4.1, 4.5.1, 4.6.2 and 4.7.2; live tests of every new tool and upgrade on 4.7.2, including undo/redo; a live smoke test on 4.4.1; `tsc` clean and 73 server tests passing; two Codex review passes.
+- Not done: the Godot 4.6 "ObjectDB snapshot", embedded-game speed control and unique node IDs have no public API a plugin can call.
 
 ---
 

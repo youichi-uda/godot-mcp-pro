@@ -11,6 +11,8 @@ func get_commands() -> Dictionary:
 		"attach_script": _attach_script,
 		"get_open_scripts": _get_open_scripts,
 		"validate_script": _validate_script,
+		"close_script": _close_script,
+		"reload_open_scripts": _reload_open_scripts,
 	}
 
 
@@ -119,6 +121,8 @@ func _create_script(params: Dictionary) -> Dictionary:
 	var guard := guard_text_resource_write(path, force)
 	if not guard.is_empty():
 		return guard
+	# Only reachable while the file is open when force=true bypassed the guard.
+	var open_in_editor := is_text_resource_open_in_script_editor(path)
 
 	# Generate template if no content provided
 	if content.is_empty():
@@ -151,6 +155,10 @@ func _create_script(params: Dictionary) -> Dictionary:
 		return verify
 	watch_text_persistence(path, content.md5_text(), "create_script")
 
+	var payload := {"path": path, "created": true}
+	if open_in_editor:
+		await _sync_open_editor_buffer(path, payload)
+
 	EditorInterface.get_resource_filesystem().scan()
 
 	# Pre-load so the script is available immediately
@@ -159,7 +167,7 @@ func _create_script(params: Dictionary) -> Dictionary:
 		if script is Script:
 			script.reload(true)
 
-	return success({"path": path, "created": true})
+	return success(payload)
 
 
 func _edit_script(params: Dictionary) -> Dictionary:
@@ -178,6 +186,8 @@ func _edit_script(params: Dictionary) -> Dictionary:
 	var guard := guard_text_resource_write(path, force)
 	if not guard.is_empty():
 		return guard
+	# Only reachable while the file is open when force=true bypassed the guard.
+	var open_in_editor := is_text_resource_open_in_script_editor(path)
 
 	# The read-modify-write section runs exclusively per file path: several
 	# MCP sessions can ride the same editor at once (each through its own
@@ -199,6 +209,9 @@ func _edit_script(params: Dictionary) -> Dictionary:
 	var indent_warning: String = write_result.get("indent_warning", "")
 	if not indent_warning.is_empty():
 		payload["indentation_warning"] = indent_warning
+
+	if open_in_editor:
+		await _sync_open_editor_buffer(path, payload)
 
 	# Reload the script resource so the editor picks up changes immediately
 	_reload_script(path)
@@ -359,6 +372,160 @@ func _detect_indent_style(text: String) -> String:
 	if tab_lines >= space_lines:
 		return "tabs"
 	return "%d spaces" % smallest_space_indent
+
+
+## After a verified force-write to a script that is open in the script editor,
+## brings the editor buffer back in line with disk (ScriptEditor
+## .reload_open_files, Godot 4.7+) so the stale buffer does not linger and
+## trigger a "files changed on disk" prompt. Adds editor_buffer_reloaded to
+## `payload`, based on comparing the buffer text with the file, not on having
+## asked for a reload. On older versions the payload is left untouched,
+## exactly as before this existed.
+##
+## Two cases measured on 4.7.2 need care:
+## - A buffer with unsaved edits is never reloaded. Saving it later would
+##   overwrite what was just written, so that is reported, not hidden.
+## - Godot notices a changed file by its modification time, which has
+##   one-second resolution. A second write within the same second as the
+##   previous one (edit_script twice in a row) is not picked up. In that case
+##   wait for the clock to pass the file's timestamp, rewrite the identical
+##   bytes so the timestamp moves, and reload again.
+func _sync_open_editor_buffer(path: String, payload: Dictionary) -> void:
+	if not reload_script_editor_buffers():
+		return
+	var still_unsaved: Variant = is_script_unsaved_in_editor(path)
+	if still_unsaved is bool and still_unsaved:
+		payload["editor_buffer_reloaded"] = false
+		payload["editor_buffer_unsaved"] = true
+		payload["editor_buffer_warning"] = "The script editor holds unsaved edits for this file, so Godot kept that buffer instead of reloading it. Saving it in the editor (or save_all) will overwrite what was just written to disk. Use close_script with discard_unsaved=true to drop the buffer, then reopen the file."
+		return
+	if _editor_buffer_matches_disk(path):
+		payload["editor_buffer_reloaded"] = true
+		return
+
+	# Same-second rewrite: let the timestamp advance, then touch the file.
+	var waited := 0.0
+	while int(Time.get_unix_time_from_system()) <= FileAccess.get_modified_time(path) and waited < 1.5:
+		await get_tree().create_timer(0.1).timeout
+		waited += 0.1
+	var touched: Dictionary = await run_path_serialized(path, _rewrite_same_content.bind(path))
+	if not touched.has("error"):
+		reload_script_editor_buffers()
+	var synced := _editor_buffer_matches_disk(path)
+	payload["editor_buffer_reloaded"] = synced
+	if not synced:
+		payload["editor_buffer_warning"] = "The file on disk is correct, but the script editor still shows older text for it. Call reload_open_scripts, or close_script and reopen the file, before editing it in the editor."
+
+
+## Rewrites a file with exactly the bytes it already holds, only to move its
+## modification time forward. Runs under run_path_serialized; skips (and
+## reports an error) if the file cannot be read or written.
+func _rewrite_same_content(path: String) -> Dictionary:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return error_internal("Cannot read '%s'" % path)
+	var content := file.get_as_text()
+	file.close()
+	file = FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		return error_internal("Cannot write '%s'" % path)
+	file.store_string(content)
+	file.close()
+	var verify := verify_text_write(path, content, "editor buffer sync")
+	if not verify.is_empty():
+		return verify
+	return success({})
+
+
+## True when the script editor's buffer for `path` holds the same text as the
+## file on disk (line endings ignored). False when it differs or the script
+## is not open.
+func _editor_buffer_matches_disk(path: String) -> bool:
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null:
+		return false
+	var target := normalize_project_path(path)
+	var editors: Array = script_editor.get_open_script_editors()
+	var scripts: Array = script_editor.get_open_scripts()
+	for i in mini(editors.size(), scripts.size()):
+		if not scripts[i] is Resource or not paths_match(normalize_project_path((scripts[i] as Resource).resource_path), target):
+			continue
+		var base_editor: Control = (editors[i] as ScriptEditorBase).get_base_editor()
+		if not base_editor is TextEdit:
+			return false
+		var buffer_text := (base_editor as TextEdit).text.replace("\r\n", "\n")
+		var disk_text := FileAccess.get_file_as_string(path).replace("\r\n", "\n")
+		return buffer_text == disk_text
+	return false
+
+
+## Closes a script tab in the script editor (ScriptEditor.close_file, Godot
+## 4.7+). close_file discards unsaved buffer edits without asking (measured on
+## 4.7.2), so a modified buffer is refused unless discard_unsaved=true.
+func _close_script(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "path")
+	if result[1] != null:
+		return result[1]
+	var path := normalize_project_path(result[0])
+	var path_guard := _guard_script_file_path(path, "close_script")
+	if not path_guard.is_empty():
+		return path_guard
+	var discard_unsaved: bool = optional_bool(params, "discard_unsaved", false)
+
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null or not script_editor.has_method("close_file"):
+		return error_requires_godot("close_script", "4.7")
+
+	# Resolve the path the editor itself uses, so a differently-cased alias
+	# on a case-insensitive filesystem still names the open tab.
+	var editor_path := ""
+	var open_paths: Array = []
+	for open_resource in script_editor.get_open_scripts():
+		if open_resource is Resource:
+			var open_path := normalize_project_path((open_resource as Resource).resource_path)
+			open_paths.append(open_path)
+			if editor_path.is_empty() and paths_match(open_path, path):
+				editor_path = (open_resource as Resource).resource_path
+	if editor_path.is_empty():
+		return error_not_found(
+			"Script '%s' in the script editor" % path,
+			"It is not open. Use get_open_scripts to list open scripts. Open: %s" % [", ".join(open_paths)]
+		)
+
+	var unsaved_state: Variant = is_script_unsaved_in_editor(editor_path)
+	var was_unsaved: bool = unsaved_state is bool and unsaved_state
+	if was_unsaved and not discard_unsaved:
+		return error_conflict(
+			"Refusing to close '%s': its script editor buffer has unsaved changes" % path,
+			{
+				"path": path,
+				"unsaved_scripts": get_unsaved_script_paths(),
+				"suggestion": "Call save_all (scripts=true) to keep the changes first, or pass discard_unsaved=true to close and lose them.",
+			}
+		)
+
+	var err: int = script_editor.call("close_file", editor_path)
+	if err != OK:
+		return error_internal("close_file('%s') failed: %s" % [editor_path, error_string(err)])
+	return success({"path": path, "closed": true, "discarded_unsaved": was_unsaved})
+
+
+## Reloads the script editor's open buffers from disk (ScriptEditor
+## .reload_open_files, Godot 4.7+). Buffers with unsaved edits are kept as
+## they are, which the response lists so nothing is silently assumed synced.
+func _reload_open_scripts(_params: Dictionary) -> Dictionary:
+	var unsaved_before: Variant = get_unsaved_script_paths()
+	if not reload_script_editor_buffers():
+		return error_requires_godot("reload_open_scripts", "4.7")
+	var open_scripts: Array = []
+	for open_resource in EditorInterface.get_script_editor().get_open_scripts():
+		if open_resource is Resource and not (open_resource as Resource).resource_path.is_empty():
+			open_scripts.append(normalize_project_path((open_resource as Resource).resource_path))
+	var payload := {"reloaded": true, "open_scripts": open_scripts}
+	if unsaved_before is Array and not (unsaved_before as Array).is_empty():
+		payload["kept_unsaved"] = unsaved_before
+		payload["note"] = "Buffers listed in kept_unsaved have unsaved edits, so Godot did not reload them from disk."
+	return success(payload)
 
 
 ## Force-reload a script so the editor reflects disk changes immediately.

@@ -12,6 +12,7 @@ func get_commands() -> Dictionary:
 		"assert_screen_text": _assert_screen_text,
 		"run_stress_test": _run_stress_test,
 		"get_test_report": _get_test_report,
+		"set_game_speed": _set_game_speed,
 	}
 
 
@@ -309,6 +310,7 @@ func _run_stress_test(params: Dictionary) -> Dictionary:
 			"sequence_events": batch,
 			"frame_delay": 1,
 		})
+		await await_input_payload_consumed("user://mcp_input_commands")
 		var file := FileAccess.open("user://mcp_input_commands", FileAccess.WRITE)
 		if file:
 			file.store_string(json)
@@ -423,6 +425,7 @@ func _execute_input_step(step: Dictionary) -> Dictionary:
 		"sequence_events": events,
 		"frame_delay": int(step.get("frame_delay", 1)),
 	})
+	await await_input_payload_consumed("user://mcp_input_commands")
 	var file := FileAccess.open("user://mcp_input_commands", FileAccess.WRITE)
 	if file == null:
 		return {"error": "Failed to write input commands"}
@@ -561,6 +564,26 @@ func _send_game_command(command: String, params: Dictionary = {}, timeout_sec: f
 		return error(-32000, str(parsed["error"]))
 
 	return success(parsed)
+
+
+func _set_game_speed(params: Dictionary) -> Dictionary:
+	## Read or set Engine.time_scale in the running game. With `scale` omitted
+	## (or null) it only reports the current values. The game clamps the value
+	## to its allowed range and reports whether it did.
+	var cmd_params := {}
+	var raw: Variant = params.get("scale", null)
+	if raw != null:
+		if not (raw is float or raw is int):
+			return error_invalid_params("scale must be a number, got %s" % type_string(typeof(raw)))
+		var scale := float(raw)
+		if is_nan(scale) or is_inf(scale):
+			return error_invalid_params("scale must be a finite number")
+		cmd_params["scale"] = scale
+
+	var result := await send_game_command("set_game_speed", cmd_params, 5.0)
+	if result.has("error"):
+		return result
+	return success(unwrap_game_result(result))
 
 
 # ── Utility ───────────────────────────────────────────────────────────────────

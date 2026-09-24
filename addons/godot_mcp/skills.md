@@ -53,6 +53,7 @@ setup_camera_3d      → camera with optional SpringArm3D for third-person
 set_material_3d      → PBR materials (albedo, metallic, roughness, emission)
 setup_collision      → add collision shapes to physics bodies
 setup_physics_body   → configure mass, friction, gravity
+get_gridmap_info     → inspect a GridMap: MeshLibrary, used-cell bounds, per-item counts (filter cells by item/bounds)
 ```
 
 ### 4. Write & Edit Scripts
@@ -65,6 +66,8 @@ edit_script    → modify existing scripts
   - Use `insert_at_line` + `text` for inserting code
 validate_script → check for syntax errors without running
 read_script    → read current content before editing
+reload_open_scripts → reload open script tabs from disk after external edits (Godot 4.7+; tabs with unsaved edits are kept)
+close_script   → close a script tab (Godot 4.7+; refuses unsaved edits unless discard_unsaved=true)
 ```
 
 ### 5. Playtest & Debug
@@ -118,6 +121,7 @@ set_theme_color   → change font_color, etc.
 set_theme_font_size → adjust text size
 set_theme_stylebox  → backgrounds, borders, rounded corners
 connect_signal    → wire up button pressed, value_changed, etc.
+add_virtual_joystick → on-screen touch joystick that presses input actions (Godot 4.7+; enable input_devices/pointing/emulate_touch_from_mouse to test with a mouse)
 ```
 
 ### 8. TileMap
@@ -202,6 +206,8 @@ After creating or significantly modifying scripts, use `reload_project` to ensur
 ### Save Frequently
 Call `save_scene` after making significant changes. Unsaved changes can be lost if the editor reloads.
 
+Before editing files that are open in the editor, or when finishing a task, call `get_unsaved_state` to see what is unsaved, then `save_all` to save every open scene and modified script buffer. On Godot 4.5/4.6 the unsaved lists are `null` (unknown, not "all saved") and only scenes are saved; scenes that were never saved need `save_scene` with a path.
+
 ## Analysis & Debugging Tools
 
 When something goes wrong, use these tools to investigate:
@@ -224,6 +230,7 @@ assert_node_state   → verify node properties match expected values
 assert_screen_text  → verify text is displayed on screen
 compare_screenshots → visual regression testing (use file paths, not base64)
 run_stress_test     → spawn many nodes to test performance
+set_game_speed      → set Engine.time_scale while playing: 0.25 = slow motion for capture_frames, 4 = fast-forward long waits
 ```
 
 ## Advanced Patterns
@@ -256,6 +263,7 @@ create_animation_tree           → set up AnimationTree with state machine or b
 add_state_machine_state         → add states (idle, walk, run, jump)
 add_state_machine_transition    → define transitions between states
 set_tree_parameter              → control blend parameters
+setup_ik_modifier               → add an IK modifier (TwoBoneIK3D, CCDIK3D, FABRIK3D, …) to a Skeleton3D (Godot 4.6+)
 ```
 
 ### Code-to-Inspector Migration

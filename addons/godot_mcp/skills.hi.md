@@ -53,6 +53,7 @@ setup_camera_3d      → camera, optional SpringArm3D के साथ third-per
 set_material_3d      → PBR materials (albedo, metallic, roughness, emission)
 setup_collision      → physics bodies में collision shapes जोड़ें
 setup_physics_body   → mass, friction, gravity configure करें
+get_gridmap_info     → GridMap inspect करें: MeshLibrary, used cells की bounds, हर item की count (item/bounds से cells filter करें)
 ```
 
 ### 4. Scripts लिखें और Edit करें
@@ -65,6 +66,8 @@ edit_script    → existing scripts modify करें
   - `insert_at_line` + `text` code insert करने के लिए
 validate_script → बिना run किए syntax errors चेक करें
 read_script    → edit करने से पहले current content पढ़ें
+reload_open_scripts → बाहर से files बदलने के बाद open script tabs को disk से reload करें (Godot 4.7+; unsaved changes वाले tabs वैसे ही रहते हैं)
+close_script   → script tab बंद करें (Godot 4.7+; unsaved changes होने पर मना करता है, जब तक discard_unsaved=true न हो)
 ```
 
 ### 5. Playtest और Debug करें
@@ -118,6 +121,7 @@ set_theme_color   → font_color आदि बदलें
 set_theme_font_size → text size adjust करें
 set_theme_stylebox  → backgrounds, borders, rounded corners
 connect_signal    → button pressed, value_changed आदि wire up करें
+add_virtual_joystick → on-screen touch joystick जो input actions दबाता है (Godot 4.7+; mouse से test करने के लिए input_devices/pointing/emulate_touch_from_mouse enable करें)
 ```
 
 ### 8. TileMap
@@ -199,6 +203,8 @@ Scripts create या significantly modify करने के बाद, `reloa
 ### बार-बार Save करें
 बड़े बदलावों के बाद `save_scene` call करें। Unsaved changes editor reload होने पर खो सकते हैं।
 
+Editor में खुली files edit करने से पहले, या task खत्म करते समय, `get_unsaved_state` से देखें कि क्या unsaved है, फिर `save_all` से सभी open scenes और modified script buffers save करें। Godot 4.5/4.6 पर unsaved lists `null` होती हैं (मतलब unknown, "सब saved" नहीं) और सिर्फ़ scenes save होते हैं; जो scenes कभी save नहीं हुए उनके लिए path के साथ `save_scene` use करें।
+
 ## Analysis और Debugging Tools
 
 कुछ गलत होने पर, इन tools से investigate करें:
@@ -221,6 +227,7 @@ assert_node_state   → verify करें कि node properties expected valu
 assert_screen_text  → verify करें कि text screen पर display हो रहा है
 compare_screenshots → visual regression testing (file paths use करें, base64 नहीं)
 run_stress_test     → performance test के लिए बहुत सारे nodes spawn करें
+set_game_speed      → चलते game में Engine.time_scale set करें: 0.25 = capture_frames के लिए slow motion, 4 = लंबे waits को fast-forward
 ```
 
 ## Advanced Patterns
@@ -253,6 +260,7 @@ create_animation_tree           → state machine या blend tree के स�
 add_state_machine_state         → states जोड़ें (idle, walk, run, jump)
 add_state_machine_transition    → states के बीच transitions define करें
 set_tree_parameter              → blend parameters control करें
+setup_ik_modifier               → Skeleton3D में IK modifier (TwoBoneIK3D, CCDIK3D, FABRIK3D, …) add करें (Godot 4.6+)
 ```
 
 ## Recommended Workflow Order
