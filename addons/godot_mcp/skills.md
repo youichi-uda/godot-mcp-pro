@@ -31,6 +31,7 @@ create_script  → write GDScript for game logic
 attach_script  → attach script to a node
 update_property → set position, scale, modulate, etc.
 save_scene     → save to disk
+reload_scene_from_path → reload an open scene tab from disk after an external edit (hand-fixed .tscn, git checkout, etc.); refuses over unsaved node changes unless discard_unsaved=true
 ```
 
 **Example — creating a player:**

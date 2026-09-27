@@ -1,6 +1,6 @@
 # Godot MCP Pro
 
-Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **187 powerful tools**.
+Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **188 powerful tools**.
 
 ## Architecture
 
@@ -63,7 +63,7 @@ Godot MCP Pro offers four modes to fit any client's tool limit:
 
 | Mode | Tools | Best For |
 |------|-------|----------|
-| **Full** (default) | 187 | Claude Code, Cline, VS Code Copilot, Cursor |
+| **Full** (default) | 188 | Claude Code, Cline, VS Code Copilot, Cursor |
 | **3D** (`--3d`) | 100 | Antigravity and other 100-tool-limit clients needing 3D |
 | **Lite** (`--lite`) | 88 | Windsurf, JetBrains Junie, Gemini CLI |
 | **Minimal** (`--minimal`) | 35 | OpenCode, local LLMs with small context |
@@ -135,7 +135,7 @@ The CLI connects directly to the Godot editor plugin via WebSocket. It requires:
 
 Open your Godot project with the plugin enabled, then use Claude Code to interact with the editor.
 
-## All 187 Tools
+## All 188 Tools
 
 ### Project Tools (10)
 | Tool | Description |
@@ -151,7 +151,7 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `add_autoload` | Register autoload singleton |
 | `remove_autoload` | Remove autoload singleton |
 
-### Scene Tools (10)
+### Scene Tools (11)
 | Tool | Description |
 |------|-------------|
 | `get_scene_tree` | Live scene tree with hierarchy |
@@ -164,6 +164,7 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `stop_scene` | Stop running scene |
 | `save_scene` | Save current scene to disk |
 | `get_scene_exports` | List @export variables of all scripted nodes in a scene file |
+| `reload_scene_from_path` | Reload an open scene tab from disk after an external edit; refuses over unsaved changes unless `discard_unsaved=true` |
 
 ### Node Tools (17)
 | Tool | Description |
@@ -470,7 +471,7 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | Other | 0 | 0 | 9 | 5 | 5 | 2 | 1 |
 | Headless | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Android Deploy | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
-| **Total** | **187** | ~30 | **32** | **39** | **13** | **19** | **10** |
+| **Total** | **188** | ~30 | **32** | **39** | **13** | **19** | **10** |
 
 ### Feature Matrix
 

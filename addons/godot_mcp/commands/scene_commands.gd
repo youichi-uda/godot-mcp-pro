@@ -17,6 +17,7 @@ func get_commands() -> Dictionary:
 		"stop_scene": _stop_scene,
 		"save_scene": _save_scene,
 		"get_scene_exports": _get_scene_exports,
+		"reload_scene_from_path": _reload_scene_from_path,
 	}
 
 
@@ -319,6 +320,77 @@ func _save_scene(params: Dictionary) -> Dictionary:
 		return error_internal("Failed to save scene via %s: %s" % [save_method, error_string(err)])
 
 	return success({"path": normalized_path, "saved": true, "method": save_method})
+
+
+## Forces an open scene tab to reload its in-memory tree from disk
+## (EditorInterface.reload_scene_from_path). Needed after a scene's .tscn
+## file is edited outside MCP (hand-fixed, restored via git, etc.) while it
+## is still open — get_scene_tree otherwise keeps returning the stale
+## in-memory state indefinitely, with nothing else able to force a resync.
+## Unlike reload_open_scripts, Godot has no bulk "reload every open scene"
+## API and no built-in unsaved-edit protection for this call: it silently
+## discards in-editor changes with no confirmation dialog (verified live),
+## so this guards on get_unsaved_scenes the same way script reload guards on
+## get_unsaved_files.
+func _reload_scene_from_path(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "path")
+	if result[1] != null:
+		return result[1]
+	var path: String = result[0]
+
+	if not is_scene_resource_path(path):
+		return error_invalid_params(
+			"'%s' is not a scene file (.tscn or .scn)." % path
+		)
+
+	if not FileAccess.file_exists(path):
+		return error_not_found("Scene file '%s'" % path)
+
+	var normalized_path := normalize_project_path(path)
+
+	# reload_scene_from_path() only affects a tab already open at this path;
+	# on an unopened path it is a verified no-op (does not open or switch to
+	# it), so say plainly that there was nothing to reload rather than
+	# reporting a reload that did not happen.
+	if not is_scene_path_open(normalized_path):
+		return success({
+			"path": normalized_path,
+			"reloaded": false,
+			"note": "This scene is not open in the editor, so there is nothing to reload. Use open_scene to load it fresh from disk.",
+		})
+
+	var discard_unsaved: bool = optional_bool(params, "discard_unsaved", false)
+	var unsaved_scenes: Variant = get_unsaved_scene_paths()
+	var unsaved_known: bool = unsaved_scenes is Array
+	var is_unsaved: bool
+	if unsaved_known:
+		is_unsaved = false
+		for p: String in (unsaved_scenes as Array):
+			if paths_match(p, normalized_path):
+				is_unsaved = true
+				break
+	else:
+		# Godot < 4.7 cannot report unsaved scene state; assume the worst
+		# rather than silently discarding edits we cannot see.
+		is_unsaved = true
+
+	if is_unsaved and not discard_unsaved:
+		return error_conflict(
+			"Refusing to reload '%s' from disk: it has unsaved changes in the editor (or this Godot version cannot verify that), and reloading discards them silently with no confirmation dialog" % normalized_path,
+			{
+				"path": normalized_path,
+				"unsaved_known": unsaved_known,
+				"suggestion": "Save the scene first (save_scene), or pass discard_unsaved=true to reload anyway and lose the in-editor changes.",
+			}
+		)
+
+	EditorInterface.reload_scene_from_path(normalized_path)
+
+	return success({
+		"path": normalized_path,
+		"reloaded": true,
+		"discarded_unsaved": is_unsaved,
+	})
 
 
 func _get_scene_exports(params: Dictionary) -> Dictionary:
