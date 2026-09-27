@@ -4,6 +4,13 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## Unreleased
+
+### Added — new tool (addon side)
+- **`reload_scene_from_path`** — forces an open scene tab to reload its in-memory tree from disk (`EditorInterface.reload_scene_from_path`), mirroring `reload_open_scripts` for scenes. Needed after a `.tscn` file is edited outside MCP (hand-fixed, restored via `git checkout`, etc.) while it's still open in the editor: `get_scene_tree` otherwise keeps returning the stale in-memory state indefinitely, and there was no supported way to force a resync short of `execute_editor_script`. Unlike scripts, Godot has no bulk "reload every open scene" API and `reload_scene_from_path` itself has no built-in unsaved-edit protection — verified live that it silently discards in-editor node changes with no confirmation dialog — so the command guards on `EditorInterface.get_unsaved_scenes()` (Godot 4.7+) the same way `reload_open_scripts` guards on `get_unsaved_files()`, refusing unless `discard_unsaved=true` is passed. On a scene path that isn't currently open, verified this is a no-op (doesn't open or switch to it), so the command reports `reloaded: false` with an explanatory note instead of a misleading success. Note: this PR only adds the addon-side command handler; the server-side tool schema/registration (and any Lite/3D/Minimal mode count adjustments) live outside this public repo and need to be added on the server side to make it callable as a first-class MCP tool.
+
+---
+
 ## v1.17.1 — 2026-09-25
 
 **Patch** — v1.17.0 was published on GitHub only; this is the first store release of the 1.17 line and includes everything below plus all of v1.17.0. It is the result of an adversarial review of everything changed since v1.16.0, run with the Codex CLI in 39 rounds until it returned no findings. 98 findings were fixed; each was reproduced or checked against the engine, and verified live on Godot 4.7.2 where it could be. Every addon script still parses on 4.4.1, 4.5.1, 4.6.2 and 4.7.2.
