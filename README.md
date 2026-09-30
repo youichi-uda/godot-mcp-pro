@@ -1,6 +1,6 @@
 # Godot MCP Pro
 
-Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **187 powerful tools**.
+Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **188 powerful tools**.
 
 ## Architecture
 
@@ -63,7 +63,7 @@ Godot MCP Pro offers four modes to fit any client's tool limit:
 
 | Mode | Tools | Best For |
 |------|-------|----------|
-| **Full** (default) | 187 | Claude Code, Cline, VS Code Copilot, Cursor |
+| **Full** (default) | 188 | Claude Code, Cline, VS Code Copilot, Cursor |
 | **3D** (`--3d`) | 100 | Antigravity and other 100-tool-limit clients needing 3D |
 | **Lite** (`--lite`) | 88 | Windsurf, JetBrains Junie, Gemini CLI |
 | **Minimal** (`--minimal`) | 35 | OpenCode, local LLMs with small context |
@@ -135,7 +135,7 @@ The CLI connects directly to the Godot editor plugin via WebSocket. It requires:
 
 Open your Godot project with the plugin enabled, then use Claude Code to interact with the editor.
 
-## All 187 Tools
+## All 188 Tools
 
 ### Project Tools (10)
 | Tool | Description |
@@ -414,12 +414,13 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `set_game_speed` | Read/set the running game's Engine.time_scale (slow motion / fast-forward) |
 | `get_test_report` | Get test results report |
 
-### Headless Tools (3)
+### Headless Tools (4)
 | Tool | Description |
 |------|-------------|
 | `run_headless_scene` | Run a scene in a separate headless Godot process (e.g. a project's test suite) |
 | `run_headless_script` | Run an `extends SceneTree` script with `godot --headless --script` |
 | `get_godot_executable` | Path of the editor's Godot binary, project path and platform |
+| `run_gut_tests` | Run the project's GUT unit tests headlessly (full suite, selected scripts or single tests); structured results parsed from GUT's JUnit XML |
 
 ### Android Tools (3)
 | Tool | Description |
@@ -468,9 +469,9 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | Asset/AI | 0 | 0 | 1 | 6 | 0 | 0 | 0 |
 | Material | 0 | 0 | 0 | 2 | 0 | 0 | 0 |
 | Other | 0 | 0 | 9 | 5 | 5 | 2 | 1 |
-| Headless | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Headless | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Android Deploy | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
-| **Total** | **187** | ~30 | **32** | **39** | **13** | **19** | **10** |
+| **Total** | **188** | ~30 | **32** | **39** | **13** | **19** | **10** |
 
 ### Feature Matrix
 

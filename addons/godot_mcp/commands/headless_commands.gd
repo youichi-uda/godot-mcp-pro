@@ -45,6 +45,7 @@ func get_commands() -> Dictionary:
 		"run_headless_scene": _run_headless_scene,
 		"run_headless_script": _run_headless_script,
 		"get_godot_executable": _get_godot_executable,
+		"run_gut_tests": _run_gut_tests,
 	}
 
 
@@ -82,6 +83,217 @@ func _run_headless_script(params: Dictionary) -> Dictionary:
 		return error_not_found("Script '%s'" % script_path)
 
 	return await _run_headless(params, ["--script", script_path], script_path)
+
+
+# ── GUT test runner (issue #44) ───────────────────────────────────────────────
+
+## GUT's documented command-line entry point. Checked for existence so a
+## project without GUT gets a clear refusal instead of a child process that
+## fails cryptically.
+const _GUT_CMDLN := "res://addons/gut/gut_cmdln.gd"
+## Per-run JUnit XML export path, so concurrent runs cannot clobber each other.
+var _gut_run_counter := 0
+
+
+## Runs the project's GUT (Godot Unit Testing) suite in a headless child
+## process and returns structured results: pass/fail, totals, one suite per
+## test script, each case with status and, for failures, GUT's message and
+## detail (which carries the assertion and source line).
+##
+## GUT itself is used through its documented CLI, unmodified. The child runs
+## through the same _run_headless machinery as run_headless_scene — timeout
+## with process-tree kill, output capture, and the GODOT_MCP_HEADLESS_CHILD
+## marker that keeps its MCP IPC services off, so a test run can never race
+## the editor's played game for the user:// request files.
+##
+## GUT's exit code is the pass/fail signal (0 = all passed, 1 = anything
+## failed; pending does not fail); a completed run with failing tests is a
+## successful tool call whose result says so.
+func _run_gut_tests(params: Dictionary) -> Dictionary:
+	if not FileAccess.file_exists(_GUT_CMDLN):
+		return error_not_found(
+			"GUT's command line script (%s)" % _GUT_CMDLN,
+			"Install the GUT addon into this project, then call reload_project. See https://gut.readthedocs.io."
+		)
+
+	var gut_args: Array = ["-s", _GUT_CMDLN]
+
+	# GUT refuses to run with no directories configured ("You do not have any
+	# directories configured"); -gtest full paths select their own scripts, so
+	# dirs are only required when no scripts were given. Resolution order:
+	# explicit param, the project's .gutconfig.json, res://tests.
+	var has_gutconfig := FileAccess.file_exists("res://.gutconfig.json")
+	var ignore_config: bool = optional_bool(params, "ignore_config", false)
+	var scripts: Array = _string_array_param(params, "scripts")
+	var dirs: Array = _string_array_param(params, "dirs")
+	if dirs.is_empty() and scripts.is_empty() and not (has_gutconfig and not ignore_config):
+		if DirAccess.dir_exists_absolute("res://tests"):
+			dirs = ["res://tests"]
+		else:
+			return error_invalid_params(
+				"No test directories configured. Pass dirs (e.g. [\"res://tests/unit\"]) or scripts (full paths), create a .gutconfig.json, or add a res://tests directory."
+			)
+	for d: String in dirs:
+		gut_args.append("-gdir=%s" % d)
+
+	# -gtest is a list in GUT, so several exact scripts can be requested.
+	for s: String in scripts:
+		gut_args.append("-gtest=%s" % s)
+	var select: String = optional_string(params, "select")
+	if not select.is_empty():
+		gut_args.append("-gselect=%s" % select)
+	var unit_test_name: String = optional_string(params, "unit_test_name")
+	if not unit_test_name.is_empty():
+		gut_args.append("-gunit_test_name=%s" % unit_test_name)
+
+	if optional_bool(params, "include_subdirs", true):
+		gut_args.append("-ginclude_subdirs")
+	if ignore_config:
+		# "-gconfig=" (empty value) is GUT's documented way to load no config.
+		gut_args.append("-gconfig=")
+
+	# Plain text in raw_output, and never sit there without exiting: without
+	# -gexit the child would wait until the timeout killed it.
+	gut_args.append("-gdisable_colors")
+	gut_args.append("-gexit")
+
+	# Structured results come from GUT's JUnit XML export into a temp file
+	# under user://, parsed and deleted afterwards whatever happened.
+	var want_junit: bool = optional_bool(params, "junit", true)
+	_gut_run_counter += 1
+	var junit_path := "user://mcp_gut_junit_%d_%d.xml" % [OS.get_process_id(), _gut_run_counter]
+	var junit_abs := ProjectSettings.globalize_path(junit_path)
+	if FileAccess.file_exists(junit_abs):
+		DirAccess.remove_absolute(junit_abs)
+	if want_junit:
+		gut_args.append("-gjunit_xml_file=%s" % junit_abs)
+
+	var result: Dictionary = await _run_headless(params, gut_args, "GUT tests")
+
+	# The JUnit file is this command's own temp file: read it before anything
+	# else, then remove it — also on the error paths below.
+	var parsed: Dictionary = {}
+	if want_junit and FileAccess.file_exists(junit_abs):
+		parsed = _parse_gut_junit(junit_abs)
+		DirAccess.remove_absolute(junit_abs)
+
+	if result.has("error"):
+		return result
+	var payload: Dictionary = result.get("result", {})
+
+	var response: Dictionary = {
+		"passed": bool(payload.get("success", false)),
+		"exit_code": payload.get("exit_code", -1),
+		"timed_out": payload.get("timed_out", false),
+		"duration_sec": payload.get("duration_sec", 0.0),
+		"command": payload.get("command", ""),
+		"raw_output": payload.get("output", ""),
+	}
+	if not parsed.is_empty():
+		response["totals"] = parsed["totals"]
+		response["suites"] = parsed["suites"]
+	elif want_junit:
+		if payload.get("timed_out", false):
+			response["junit_note"] = "No JUnit XML was written; the run was killed at the timeout before GUT finished."
+		else:
+			response["junit_note"] = "No JUnit XML could be read or parsed; rely on raw_output and exit_code."
+	if payload.get("timed_out", false):
+		response["suggestion"] = "Raise timeout_sec (up to 900) or narrow the run with dirs/scripts/select/unit_test_name."
+	return success(response)
+
+
+## Param value as an Array of Strings: a single string becomes a one-entry
+## list; non-string entries are skipped rather than raising on caller input.
+func _string_array_param(params: Dictionary, key: String) -> Array:
+	var out: Array = []
+	var raw: Variant = params.get(key, null)
+	if raw is String:
+		if not (raw as String).is_empty():
+			out.append(raw)
+	elif raw is Array:
+		for entry: Variant in raw:
+			if entry is String and not (entry as String).is_empty():
+				out.append(entry)
+	return out
+
+
+## Parses GUT's JUnit XML export (GUT 9.x element and attribute names) into
+## totals plus one suite per test script. Returns {} when the file cannot be
+## opened or nothing was recognized; the caller then falls back to raw_output.
+func _parse_gut_junit(path: String) -> Dictionary:
+	var parser := XMLParser.new()
+	if parser.open(path) != OK:
+		return {}
+	var totals := {"tests": 0, "failures": 0, "skipped": 0}
+	var suites: Array = []
+	var suite: Dictionary = {}
+	var case: Dictionary = {}
+	var capture := ""  # "" = off, else the element whose CDATA is collected
+
+	while parser.read() == OK:
+		match parser.get_node_type():
+			XMLParser.NODE_ELEMENT:
+				if parser.is_empty():
+					# A self-closing element never switches capture on.
+					match parser.get_node_name():
+						"testcase":
+							case = _gut_case_from_attributes(parser)
+							if not suite.is_empty():
+								(suite["cases"] as Array).append(case)
+					continue
+				match parser.get_node_name():
+					"testsuite":
+						suite = {
+							"script": parser.get_named_attribute_value_safe("name"),
+							"tests": parser.get_named_attribute_value_safe("tests").to_int(),
+							"failures": parser.get_named_attribute_value_safe("failures").to_int(),
+							"skipped": parser.get_named_attribute_value_safe("skipped").to_int(),
+							"time": parser.get_named_attribute_value_safe("time").to_float(),
+							"cases": [],
+						}
+					"testcase":
+						case = _gut_case_from_attributes(parser)
+					"failure":
+						capture = "failure"
+						case["message"] = parser.get_named_attribute_value_safe("message")
+					"skipped":
+						capture = "skipped"
+						case["message"] = parser.get_named_attribute_value_safe("message")
+			XMLParser.NODE_TEXT, XMLParser.NODE_CDATA:
+				if not capture.is_empty():
+					# Godot's XMLParser delivers CDATA content through
+					# get_node_name(), not get_node_data() (verified on 4.7.2).
+					var chunk := parser.get_node_data()
+					if chunk.is_empty():
+						chunk = parser.get_node_name()
+					case["detail"] = str(case.get("detail", "")) + chunk
+			XMLParser.NODE_ELEMENT_END:
+				match parser.get_node_name():
+					"failure", "skipped":
+						capture = ""
+					"testcase":
+						if not suite.is_empty() and not case.is_empty():
+							(suite["cases"] as Array).append(case)
+						case = {}
+					"testsuite":
+						if not suite.is_empty():
+							suites.append(suite)
+							totals["tests"] += int(suite["tests"])
+							totals["failures"] += int(suite["failures"])
+							totals["skipped"] += int(suite["skipped"])
+						suite = {}
+	if suites.is_empty():
+		return {}
+	totals["passing"] = int(totals["tests"]) - int(totals["failures"]) - int(totals["skipped"])
+	return {"totals": totals, "suites": suites}
+
+
+func _gut_case_from_attributes(parser: XMLParser) -> Dictionary:
+	return {
+		"name": parser.get_named_attribute_value_safe("name"),
+		"status": parser.get_named_attribute_value_safe("status"),
+		"time": parser.get_named_attribute_value_safe("time").to_float(),
+	}
 
 
 func _run_headless(params: Dictionary, target_args: Array, target: String, max_timeout_sec: float = _MAX_TIMEOUT_SEC, on_started: Callable = Callable()) -> Dictionary:

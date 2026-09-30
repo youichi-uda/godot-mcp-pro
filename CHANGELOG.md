@@ -4,6 +4,13 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## Unreleased
+
+### Added — testing
+- **`run_gut_tests` (issue #44): run the project's GUT unit tests through MCP.** Full suite, selected scripts (`scripts`, GUT's repeatable `-gtest` list), a filename substring (`select`), or single tests (`unit_test_name`), with a configurable timeout. GUT is invoked through its documented command line (`addons/gut/gut_cmdln.gd`), unmodified, inside the same `_run_headless` machinery as `run_headless_scene` (process-tree kill on timeout, output capture, the `GODOT_MCP_HEADLESS_CHILD` marker that keeps the child's MCP IPC services off). Results are structured: pass/fail from GUT's exit code (0/1; pending does not fail), totals and one suite per test script with per-case status, failure message and detail (assertion + source line) parsed from GUT's JUnit XML export into a temp file that is always cleaned up — `junit=false` skips the XML and relies on `exit_code` + `raw_output`. Clear refusals when GUT is not installed or no test directories resolve (param, `.gutconfig.json`, or `res://tests`). Logic tests: `tests/test_gut_runner.gd` (15 checks, skips cleanly when GUT is absent).
+
+---
+
 ## v1.17.1 — 2026-09-25
 
 **Patch** — v1.17.0 was published on GitHub only; this is the first store release of the 1.17 line and includes everything below plus all of v1.17.0. It is the result of an adversarial review of everything changed since v1.16.0, run with the Codex CLI in 39 rounds until it returned no findings. 98 findings were fixed; each was reproduced or checked against the engine, and verified live on Godot 4.7.2 where it could be. Every addon script still parses on 4.4.1, 4.5.1, 4.6.2 and 4.7.2.

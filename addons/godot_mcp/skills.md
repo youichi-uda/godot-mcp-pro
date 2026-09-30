@@ -31,6 +31,7 @@ create_script  → write GDScript for game logic
 attach_script  → attach script to a node
 update_property → set position, scale, modulate, etc.
 save_scene     → save to disk
+run_gut_tests  → run the project's GUT unit tests headlessly (full suite, scripts, or single tests; structured pass/fail results)
 ```
 
 **Example — creating a player:**
