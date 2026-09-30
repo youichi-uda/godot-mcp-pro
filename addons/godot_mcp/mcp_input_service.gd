@@ -28,6 +28,13 @@ var _group_held := {}
 var _sequence_frame_delay: int = 0
 var _sequence_frames_waited: int = 0
 
+## editor pid this game was started by (--editor-pid), cached; -1 = not looked
+## up yet, 0 = absent (manual run, or a Godot that does not pass it).
+var _editor_pid_cached := -1
+## Payload text last left in place because it names another editor; kept so it
+## is not re-read and re-judged on every frame while it waits for its owner.
+var _ignored_payload_text := ""
+
 
 func _ready() -> void:
 	# Editor-driven service only — disable it in exported builds rather than
@@ -91,12 +98,28 @@ func _process_commands() -> void:
 		return
 	var text := file.get_as_text()
 	file.close()
-	DirAccess.remove_absolute(COMMANDS_PATH)
 
 	var parsed = JSON.parse_string(text)
 	if parsed == null:
+		DirAccess.remove_absolute(COMMANDS_PATH)
 		push_warning("[MCP Input] Failed to parse input commands JSON")
 		return
+
+	# Input is the most dangerous thing to deliver to the wrong process: it
+	# presses keys and clicks in whatever consumes it. A payload naming
+	# another editor belongs to one of that editor's processes, so leave it
+	# in place for them (several Godot processes of one project share this
+	# user:// directory). Payloads without an editor pid (an older editor)
+	# stay permissive.
+	if parsed is Dictionary:
+		if text == _ignored_payload_text:
+			return  # already judged as another editor's; waiting for its owner
+		var payload_editor_pid := _int_or_zero((parsed as Dictionary).get("editor_pid"))
+		if not _owns_request(payload_editor_pid):
+			_ignored_payload_text = text
+			return
+		_ignored_payload_text = ""
+	DirAccess.remove_absolute(COMMANDS_PATH)
 
 	if parsed is Dictionary:
 		# Plain events arrive wrapped as {"events": [...]}. (Input left over
@@ -450,3 +473,38 @@ func _create_action_event(data: Dictionary) -> InputEventAction:
 	event.pressed = data.get("pressed", true)
 	event.strength = data.get("strength", 1.0)
 	return event
+
+
+## The editor that started this process, from the `--editor-pid <pid>` /
+## `--editor-pid=<pid>` argument the editor passes to a played game. Manual
+## runs (a test harness, `godot --path ... res://scene.tscn`) have none.
+func _own_editor_pid() -> int:
+	if _editor_pid_cached != -1:
+		return _editor_pid_cached
+	var pid := 0
+	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	for i in args.size():
+		var arg := str(args[i])
+		if arg.begins_with("--editor-pid="):
+			pid = int(arg.substr("--editor-pid=".length()))
+		elif arg == "--editor-pid" and i + 1 < args.size():
+			pid = int(str(args[i + 1]))
+	_editor_pid_cached = pid if pid > 0 else 0
+	return _editor_pid_cached
+
+
+## Whether this process should serve a payload naming `payload_editor_pid`.
+## 0 on either side means "unknown" and stays permissive — an older editor
+## sends no pid, and a Godot that does not pass --editor-pid must keep
+## working.
+func _owns_request(payload_editor_pid: int) -> bool:
+	var own := _own_editor_pid()
+	return own == 0 or payload_editor_pid <= 0 or own == payload_editor_pid
+
+
+## int value of a Variant that is int/float, else 0 (never raises on the
+## JSON-decoded contents of a payload).
+static func _int_or_zero(value: Variant) -> int:
+	if value is int or value is float:
+		return int(value)
+	return 0

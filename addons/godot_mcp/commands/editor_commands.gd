@@ -264,10 +264,18 @@ func _get_game_screenshot(params: Dictionary) -> Dictionary:
 	var user_dir := get_game_user_dir()
 	var request_path := user_dir + "/mcp_screenshot_request"
 	var screenshot_path := user_dir + "/mcp_screenshot.png"
+	# The game writes this next to the PNG: which process took the request,
+	# and whether it could produce an image. A second Godot process of this
+	# project (a manually started test run, a leftover play session) can
+	# consume the request; without this file that used to look like a bare
+	# timeout with the game running and the autoload active.
+	var result_path := user_dir + "/mcp_screenshot_result"
 
-	# Clean up any stale screenshot file
+	# Clean up any stale outcome files
 	if FileAccess.file_exists(screenshot_path):
 		DirAccess.remove_absolute(screenshot_path)
+	if FileAccess.file_exists(result_path):
+		DirAccess.remove_absolute(result_path)
 
 	# Create the request file to signal the game process
 	# The game only checks that the file exists; the content names the
@@ -275,20 +283,38 @@ func _get_game_screenshot(params: Dictionary) -> Dictionary:
 	if write_file_atomic(request_path, JSON.stringify({"editor_pid": OS.get_process_id()})) != OK:
 		return error_internal("Could not create screenshot request file")
 
-	# Poll for the screenshot file (max 3 seconds, 0.1s interval)
+	# Poll for the screenshot or its outcome (max 3 seconds, 0.1s interval)
 	var attempts := 30
 	while attempts > 0:
 		await get_tree().create_timer(0.1).timeout
-		if FileAccess.file_exists(screenshot_path):
+		if FileAccess.file_exists(screenshot_path) or FileAccess.file_exists(result_path):
 			break
 		attempts -= 1
+
+	# Whatever the outcome, a result file that appeared belongs to this round.
+	var game_report := {}
+	if FileAccess.file_exists(result_path):
+		var rf := FileAccess.open(result_path, FileAccess.READ)
+		if rf:
+			var parsed: Variant = JSON.parse_string(rf.get_as_text())
+			rf.close()
+			if parsed is Dictionary:
+				game_report = parsed
+		DirAccess.remove_absolute(result_path)
+	var game_pid := int(game_report.get("pid", 0)) if (game_report.get("pid") is int or game_report.get("pid") is float) else 0
 
 	if not FileAccess.file_exists(screenshot_path):
 		# Clean up request file if it still exists
 		if FileAccess.file_exists(request_path):
 			DirAccess.remove_absolute(request_path)
+		if not game_report.is_empty() and not bool(game_report.get("ok", true)):
+			return error(-32000, "Game process %d took the screenshot request but could not produce an image: %s" % [game_pid, str(game_report.get("reason", "no reason given"))], {
+				"game_pid": game_pid,
+				"game_reason": game_report.get("reason", ""),
+				"suggestion": "This pid is not the game you started (check it against the editor's play session) — another Godot process of this project is consuming the request. Close it (`pgrep -af godot`), and start test processes with GODOT_MCP_HEADLESS_CHILD=1 so their MCP services stay off (see SECURITY.md).",
+			})
 		return error(-32000, "Screenshot timed out", {
-			"suggestion": "Ensure the game is running and MCPScreenshot autoload is active",
+			"suggestion": "The game is running but no process reported a capture outcome. Either the game is stalled/not rendering, or an older same-project Godot process consumed the request silently (check `pgrep -af godot`). Ensure the MCPScreenshot autoload is active; start test processes with GODOT_MCP_HEADLESS_CHILD=1 (see SECURITY.md).",
 		})
 
 	# Load the PNG file
@@ -307,22 +333,28 @@ func _get_game_screenshot(params: Dictionary) -> Dictionary:
 		var save_err := image.save_png(abs_path)
 		if save_err != OK:
 			return error_internal("Failed to save screenshot: %s" % error_string(save_err))
-		return success({
+		var saved := {
 			"saved_path": save_path_param,
 			"width": image.get_width(),
 			"height": image.get_height(),
 			"format": "png",
-		})
+		}
+		if game_pid != 0:
+			saved["game_pid"] = game_pid
+		return success(saved)
 
 	var png_buffer := image.save_png_to_buffer()
 	var base64 := Marshalls.raw_to_base64(png_buffer)
 
-	return success({
+	var payload := {
 		"image_base64": base64,
 		"width": image.get_width(),
 		"height": image.get_height(),
 		"format": "png",
-	})
+	}
+	if game_pid != 0:
+		payload["game_pid"] = game_pid
+	return success(payload)
 
 
 func _resolve_save_path(path: String) -> String:

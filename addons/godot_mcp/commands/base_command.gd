@@ -839,7 +839,10 @@ func build_timeout_error(timeout_sec: float) -> Dictionary:
 		msg = ("Game command timed out after %.1fs. The game is running but did not respond in time." % timeout_sec)
 		data["suggestion"] = "The MCP server connection is fine and the game is running. The command may be slow " \
 			+ "or the game may be busy/blocked. Retry with a longer timeout, and call get_editor_errors to check " \
-			+ "for runtime errors. In rare cases (custom projects) verify the MCPGameInspector autoload is active."
+			+ "for runtime errors. Also check whether another Godot process of this project consumed the request " \
+			+ "(stray test run, leftover play session, second editor: `pgrep -af godot`); manually started test " \
+			+ "processes should set GODOT_MCP_HEADLESS_CHILD=1 so their MCP services stay off (see SECURITY.md). " \
+			+ "In rare cases (custom projects) verify the MCPGameInspector autoload is active."
 	return error(-32000, msg, data)
 
 

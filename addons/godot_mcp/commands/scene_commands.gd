@@ -383,6 +383,7 @@ func _cleanup_screenshot_files() -> void:
 	var request_path := user_dir + "/mcp_screenshot_request"
 	var screenshot_path := user_dir + "/mcp_screenshot.png"
 	remove_ipc_file_if_owned(request_path)
+	remove_ipc_file_if_owned(user_dir + "/mcp_screenshot_result")
 	if FileAccess.file_exists(screenshot_path):
 		DirAccess.remove_absolute(screenshot_path)
 

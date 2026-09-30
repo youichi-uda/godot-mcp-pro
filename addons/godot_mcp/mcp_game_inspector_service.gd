@@ -43,6 +43,18 @@ var _watch_start_msec: int = 0
 var _watch_duration_ms: int = 5000
 var _watch_connections: Array = []  # Array of {node, signal, callable} for cleanup
 
+## Frames of a capture that produced no image, so a process that cannot render
+## (headless, nothing drawn yet) reports it instead of silently returning
+## fewer frames with no hint why.
+var _capture_null_images: int = 0
+
+## editor pid this game was started by (--editor-pid), cached; -1 = not looked
+## up yet, 0 = absent (manual run, or a Godot that does not pass it).
+var _editor_pid_cached := -1
+## Request text last left in place because it names another editor; kept so it
+## is not re-read and re-judged on every frame while it waits for its owner.
+var _ignored_request_text := ""
+
 # Move-to state
 var _moveto_target: Vector3 = Vector3.ZERO
 var _moveto_player: Node3D = null
@@ -107,12 +119,29 @@ func _handle_request() -> void:
 		return
 	var text := file.get_as_text()
 	file.close()
-	DirAccess.remove_absolute(REQUEST_PATH)
 
 	var parsed = JSON.parse_string(text)
 	if parsed == null or not parsed is Dictionary:
+		DirAccess.remove_absolute(REQUEST_PATH)
 		_write_response({"error": "Invalid request JSON"})
 		return
+	var request: Dictionary = parsed
+
+	# A request naming another editor belongs to one of that editor's
+	# processes, not to this one. Leave it in place for them instead of
+	# consuming it here: several Godot processes of one project share this
+	# user:// directory (a manually started test run, a leftover play
+	# session, a second editor), and whichever consumed the request used to
+	# answer as if it were the game the caller meant. Unknown pids (an older
+	# editor, a Godot without --editor-pid) stay permissive.
+	if text == _ignored_request_text:
+		return  # already judged as another editor's; waiting for its owner
+	var req_editor_pid := _int_or_zero(request.get("editor_pid"))
+	if not _owns_request(req_editor_pid):
+		_ignored_request_text = text
+		return
+	_ignored_request_text = ""
+	DirAccess.remove_absolute(REQUEST_PATH)
 
 	# Abort any in-progress operation
 	_state = State.IDLE
@@ -120,11 +149,11 @@ func _handle_request() -> void:
 
 	# Echoed back with the response so the editor can tell its own reply from
 	# a late one belonging to a command that already timed out.
-	_request_id = str(parsed.get("request_id", ""))
-	_request_editor_pid = int(parsed.get("editor_pid", 0)) if (parsed.get("editor_pid") is int or parsed.get("editor_pid") is float) else 0
+	_request_id = str(request.get("request_id", ""))
+	_request_editor_pid = _int_or_zero(request.get("editor_pid"))
 
-	var command: String = parsed.get("command", "")
-	var raw_params: Variant = parsed.get("params", {})
+	var command: String = request.get("command", "")
+	var raw_params: Variant = request.get("params", {})
 	var params: Dictionary = raw_params if raw_params is Dictionary else {}
 
 	# The editor stops waiting at _mcp_expires_unix. A request read after
@@ -321,6 +350,7 @@ func _cmd_capture_frames(params: Dictionary) -> void:
 	var count: int = clampi(params.get("count", 5), 1, 30)
 	var interval: int = maxi(params.get("frame_interval", 10), 1)
 	_capture_half_res = params.get("half_resolution", true)
+	_capture_null_images = 0
 
 	# Optional node_data tracking
 	_capture_node_path = ""
@@ -354,12 +384,17 @@ func _process_capture() -> void:
 func _capture_one_frame() -> void:
 	var viewport := get_viewport()
 	if viewport == null:
-		_finish_capture()
+		_capture_null_images += 1
+		_skip_capture_frame()
 		return
 
 	var image := viewport.get_texture().get_image()
 	if image == null:
-		_finish_capture()
+		# A frame with no image used to abort the whole capture silently, so a
+		# process that cannot render returned fewer frames with no hint why.
+		# Count it and keep sampling instead.
+		_capture_null_images += 1
+		_skip_capture_frame()
 		return
 
 	if _capture_half_res:
@@ -384,6 +419,15 @@ func _capture_one_frame() -> void:
 		_finish_capture()
 
 
+## Consumes one sampling slot without producing an image (see
+## _capture_one_frame). The capture still ends after the requested number of
+## samples; the response then reports how many of them were null.
+func _skip_capture_frame() -> void:
+	_capture_frames_remaining -= 1
+	if _capture_frames_remaining <= 0:
+		_finish_capture()
+
+
 func _finish_capture() -> void:
 	_state = State.IDLE
 	var viewport := get_viewport()
@@ -403,6 +447,9 @@ func _finish_capture() -> void:
 		"height": h,
 		"half_resolution": _capture_half_res,
 	}
+	if _capture_null_images > 0:
+		response["null_images"] = _capture_null_images
+		response["note"] = "%d of the sampled frames had no image to save (a headless or never-drawn process cannot render)." % _capture_null_images
 	if not _capture_frame_data.is_empty():
 		response["frame_data"] = _capture_frame_data
 	_write_response(response)
@@ -1661,13 +1708,17 @@ func _reconstruct_event(data: Dictionary) -> InputEvent:
 
 func _write_response(data: Dictionary) -> void:
 	_pending_command = false
-	if not _request_id.is_empty() or _request_editor_pid != 0:
-		data = data.duplicate()
-		if not _request_id.is_empty():
-			data["request_id"] = _request_id
-		# Lets cleanup in an editor tell its own pending reply from another's.
-		if _request_editor_pid != 0:
-			data["editor_pid"] = _request_editor_pid
+	data = data.duplicate()
+	# Which game process answered. Several Godot processes of one project can
+	# poll the request file (a manually started test run, a leftover play
+	# session, a second editor); without this field, a reply from the wrong
+	# one is indistinguishable from a reply of the game the caller meant.
+	data["game_pid"] = OS.get_process_id()
+	if not _request_id.is_empty():
+		data["request_id"] = _request_id
+	# Lets cleanup in an editor tell its own pending reply from another's.
+	if _request_editor_pid != 0:
+		data["editor_pid"] = _request_editor_pid
 	var json := JSON.stringify(data)
 	# Publish atomically (temp file + rename) so the editor, which polls for
 	# this file, never reads it half-written.
@@ -1693,6 +1744,42 @@ func _write_response(data: Dictionary) -> void:
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
 		if locked:
 			DirAccess.remove_absolute(lock_dir)
+
+
+## The editor that started this process, from the `--editor-pid <pid>` /
+## `--editor-pid=<pid>` argument the editor passes to a played game. Manual
+## runs (a test harness, `godot --path ... res://scene.tscn`) have none.
+func _own_editor_pid() -> int:
+	if _editor_pid_cached != -1:
+		return _editor_pid_cached
+	var pid := 0
+	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	for i in args.size():
+		var arg := str(args[i])
+		if arg.begins_with("--editor-pid="):
+			pid = int(arg.substr("--editor-pid=".length()))
+		elif arg == "--editor-pid" and i + 1 < args.size():
+			pid = int(str(args[i + 1]))
+	_editor_pid_cached = pid if pid > 0 else 0
+	return _editor_pid_cached
+
+
+## Whether this process should serve a request naming `request_editor_pid`.
+## A request from another editor belongs to one of that editor's processes:
+## leave it in place for them instead of consuming it here. 0 on either side
+## means "unknown" and stays permissive — an older editor sends no pid, and a
+## Godot that does not pass --editor-pid must keep working.
+func _owns_request(request_editor_pid: int) -> bool:
+	var own := _own_editor_pid()
+	return own == 0 or request_editor_pid <= 0 or own == request_editor_pid
+
+
+## int value of a Variant that is int/float, else 0 (never raises on the
+## JSON-decoded contents of a request).
+static func _int_or_zero(value: Variant) -> int:
+	if value is int or value is float:
+		return int(value)
+	return 0
 
 
 # ── assert_node_state ─────────────────────────────────────────────────────────

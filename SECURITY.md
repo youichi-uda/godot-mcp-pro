@@ -89,6 +89,38 @@ What it does **not** protect against:
 - A process running as you. It can read `user://mcp_auth_token` exactly as the
   legitimate server does.
 
+## Other processes on the same project
+
+The editor and the played game talk over small JSON files in the project's
+`user://` directory (`mcp_game_request`, `mcp_input_commands`,
+`mcp_screenshot_request`, …). Every Godot process of that project shares that
+directory — a manually started test run, a leftover play session that never
+stopped, a second editor — and any of them can read, answer, or inject through
+those files. This sits inside the trust boundary above, but it bites by
+accident far more often than on purpose.
+
+What the addon does about it:
+
+- **Requests name their editor** (`editor_pid`). A game process started by an
+  editor (it receives `--editor-pid` on its command line) ignores requests that
+  name a different editor, leaving them for that editor's own processes.
+- **Every runtime response names its responder** (`game_pid`). When a stray
+  process does answer, the mismatch is visible immediately instead of looking
+  like a bug in the tool.
+- **Screenshot requests always produce an outcome file** (`mcp_screenshot_result`)
+  naming the process that took them and why it could or could not render — a
+  headless process can never produce an image, and now says so instead of
+  vanishing into a generic timeout.
+
+What you should do about it:
+
+- **Start test processes with `GODOT_MCP_HEADLESS_CHILD=1`** in their
+  environment (the addon's own `run_headless_scene` does this). Their MCP
+  services then never come up, so they cannot consume or answer anything.
+- When runtime tools misbehave — screenshots time out although the game runs,
+  scene queries return a scene you did not start — check
+  `pgrep -af godot` for a second process of the same project and close it.
+
 ## Reporting a vulnerability
 
 Open a GitHub issue for anything already public, or contact the author directly

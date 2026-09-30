@@ -12,6 +12,7 @@ const _MCP_TEMP_FILES: Array[String] = [
 	"mcp_game_response",
 	"mcp_input_commands",
 	"mcp_screenshot_request",
+	"mcp_screenshot_result",
 ]
 
 var websocket_server: Node

@@ -4,6 +4,17 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## Unreleased
+
+### Fixed — Runtime IPC
+- **Runtime IPC is no longer a race between every same-project Godot process.** All three game-side services (screenshot, game inspector, input) share one `user://` directory with any other process of the project — a manually started test run, a leftover play session, a second editor. A process started by an editor now knows its editor from the `--editor-pid` command-line argument and ignores requests naming a different one, leaving them for that editor's own processes. Requests without an `editor_pid` (older editors) and processes without `--editor-pid` (Godots that do not pass it) keep the old permissive behaviour.
+- **A screenshot request can no longer disappear silently.** `MCPScreenshot` used to consume the request and return without a trace when the viewport image was null — which is exactly what a headless or never-drawn process always produces, so a stray process eating the request looked like a meaningless "Screenshot timed out … autoload is active" while the game was running fine. It now writes `user://mcp_screenshot_result` naming the answering pid and the outcome (a real PNG or the reason there is none, with a direct answer for headless processes), retries a null image briefly instead of once, and the editor reports that outcome — "Game process N took the screenshot request but could not produce an image: …" — instead of a generic timeout.
+- **Every game-command response names the process that answered it** (`game_pid`). A stray process answering `get_game_scene_tree` / `execute_game_script` with *its* scene previously looked like `play_scene` starting the wrong scene; the pid mismatch now identifies the real cause at a glance.
+- **`capture_frames` accounts for frames that had no image** (`null_images`) instead of silently returning fewer frames than requested, and game-command timeout suggestions now point at a possible second same-project process (`pgrep -af godot`, `GODOT_MCP_HEADLESS_CHILD=1` for test starters — see SECURITY.md, "Other processes on the same project").
+- New logic test suite: `addons/godot_mcp/tests/test_ipc_ownership.gd` (19 checks, headless).
+
+---
+
 ## v1.17.1 — 2026-09-25
 
 **Patch** — v1.17.0 was published on GitHub only; this is the first store release of the 1.17 line and includes everything below plus all of v1.17.0. It is the result of an adversarial review of everything changed since v1.16.0, run with the Codex CLI in 39 rounds until it returned no findings. 98 findings were fixed; each was reproduced or checked against the engine, and verified live on Godot 4.7.2 where it could be. Every addon script still parses on 4.4.1, 4.5.1, 4.6.2 and 4.7.2.
