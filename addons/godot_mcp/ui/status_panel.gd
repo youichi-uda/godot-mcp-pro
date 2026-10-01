@@ -14,6 +14,7 @@ const COLOR_DIM := Color(0.6, 0.6, 0.6)
 
 const BASE_PORT := 6505
 const MAX_PORT := 6509
+const _WebSocketServer := preload("res://addons/godot_mcp/websocket_server.gd")
 
 # Header
 var _status_icon: Label
@@ -163,7 +164,7 @@ func _build_clients_tab() -> void:
 	vbox.name = "Clients"
 	_tab_container.add_child(vbox)
 
-	for p in range(BASE_PORT, MAX_PORT + 1):
+	for p in _panel_ports():
 		var row := HBoxContainer.new()
 		vbox.add_child(row)
 
@@ -177,6 +178,19 @@ func _build_clients_tab() -> void:
 		row.add_child(lbl)
 
 		_port_labels[p] = {"icon": icon, "label": lbl}
+
+
+## Ports listed in the Clients tab: the project-pinned port alone, or the MCP
+## server range as before. Read straight from the project setting, because this
+## tab is built in _ready(), before setup() hands over the websocket server.
+func _panel_ports() -> Array[int]:
+	var pinned: int = _WebSocketServer.get_pinned_port()
+	if pinned > 0:
+		return [pinned]
+	var ports: Array[int] = []
+	for p in range(BASE_PORT, MAX_PORT + 1):
+		ports.append(p)
+	return ports
 
 
 func _build_tools_tab() -> void:
@@ -248,7 +262,7 @@ func _process(_delta: float) -> void:
 
 	var any_stale := false
 	if websocket_server.has_method("is_port_stale"):
-		for p in range(BASE_PORT, MAX_PORT + 1):
+		for p: int in _port_labels:
 			if websocket_server.is_port_stale(p):
 				any_stale = true
 				break

@@ -72,7 +72,11 @@ func _enter_tree() -> void:
 	var ver := "unknown"
 	if cfg.load("res://addons/godot_mcp/plugin.cfg") == OK:
 		ver = cfg.get_value("plugin", "version", "unknown")
-	print("[MCP] Godot MCP Pro v%s started (ports 6505-6514)" % ver)
+	var pinned_port: int = websocket_server.get_pinned_port()
+	if pinned_port > 0:
+		print("[MCP] Godot MCP Pro v%s started (port %d)" % [ver, pinned_port])
+	else:
+		print("[MCP] Godot MCP Pro v%s started (ports 6505-6514)" % ver)
 
 
 ## The plugin has nothing to do in a command-line export (the editor is only
@@ -186,6 +190,21 @@ func _register_project_settings() -> void:
 		"hint_string": "Require MCP servers to present the token in user://mcp_auth_token before accepting commands.",
 	})
 	ProjectSettings.set_as_basic(KEY, true)
+
+	# Optional per-project port (websocket_server.gd PORT_SETTING); 0 = scan mode.
+	var port_key: String = preload("res://addons/godot_mcp/websocket_server.gd").PORT_SETTING
+	if not ProjectSettings.has_setting(port_key):
+		ProjectSettings.set_setting(port_key, 0)
+	ProjectSettings.set_initial_value(port_key, 0)
+	ProjectSettings.add_property_info({
+		"name": port_key,
+		"type": TYPE_INT,
+		"hint": PROPERTY_HINT_RANGE,
+		"hint_string": "0,65535",
+	})
+	ProjectSettings.set_as_basic(port_key, true)
+	# The port list is fixed when the plugin starts; tell the user to restart.
+	ProjectSettings.set_restart_if_changed(port_key, true)
 
 
 func _inject_autoloads() -> void:

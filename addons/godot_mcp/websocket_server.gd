@@ -5,6 +5,8 @@ extends Node
 ## Connects to multiple Node.js MCP server instances on ports 6505-6514.
 ## Each Claude Code session gets its own port; Godot talks to all of them.
 ## Ports 6505-6509: MCP servers (stdio), 6510-6514: CLI tool connections.
+## A project can pin ONE port instead (PORT_SETTING below); then only that
+## port is used, so several editors can be open side by side.
 
 signal client_connected()
 signal client_disconnected()
@@ -16,6 +18,11 @@ var command_router: Node
 
 const BASE_PORT := 6505
 const MAX_PORT := 6514
+## Optional per-project port. When this project setting is 1-65535 the plugin
+## connects ONLY to that port. Pair it with GODOT_MCP_PORT in the project's MCP
+## config, and several editors can be open at once without evicting each other
+## from each other's servers. 0 or unset = scan BASE_PORT..MAX_PORT as before.
+const PORT_SETTING := "godot_mcp/port"
 const RECONNECT_INTERVAL := 3.0
 const BUFFER_SIZE := 16 * 1024 * 1024  # 16MB
 const PING_INTERVAL := 5.0  # send ping every N seconds while connected
@@ -41,16 +48,54 @@ var _authed: Dictionary = {}  # port -> bool (token accepted, or auth not requir
 var _auth_timers: Dictionary = {}  # port -> float (seconds awaiting auth)
 var _auth_token: String = ""  # empty when the token requirement is off
 var _running: bool = false
+var _ports: Array[int] = []  # the ports this editor manages, fixed at start_server()
+static var _warned_bad_port := false
 
 
 func start_server() -> void:
 	_running = true
 	_auth_token = _prepare_auth_token()
-	for p in range(BASE_PORT, MAX_PORT + 1):
+	_ports = get_ports()
+	for p in _ports:
 		_connected[p] = false
 		_timers[p] = 0.0
 		_try_connect(p)
-	print("[MCP] Connecting to ports %d-%d" % [BASE_PORT, MAX_PORT])
+	var pinned := get_pinned_port()
+	if pinned > 0:
+		print("[MCP] Connecting to port %d only (project setting %s)" % [pinned, PORT_SETTING])
+	else:
+		print("[MCP] Connecting to ports %d-%d" % [BASE_PORT, MAX_PORT])
+
+
+## The port this project pins via PORT_SETTING, or 0 for scan mode. Static so
+## the status panel can ask before this node exists.
+static func get_pinned_port() -> int:
+	if not ProjectSettings.has_setting(PORT_SETTING):
+		return 0
+	var value: Variant = ProjectSettings.get_setting(PORT_SETTING)
+	if value is String and (value as String).is_valid_int():
+		value = (value as String).to_int()
+	if value is int and int(value) == 0:
+		return 0
+	if value is int and int(value) >= 1 and int(value) <= 65535:
+		return int(value)
+	if not _warned_bad_port:
+		_warned_bad_port = true
+		push_warning("[MCP] Project setting %s = %s is not a port (1-65535); scanning %d-%d instead." % [
+			PORT_SETTING, str(value), BASE_PORT, MAX_PORT
+		])
+	return 0
+
+
+## The ports this editor connects to: the pinned one, or the whole scan range.
+static func get_ports() -> Array[int]:
+	var pinned := get_pinned_port()
+	if pinned > 0:
+		return [pinned]
+	var ports: Array[int] = []
+	for p in range(BASE_PORT, MAX_PORT + 1):
+		ports.append(p)
+	return ports
 
 
 func stop_server() -> void:
@@ -115,7 +160,7 @@ func _process(delta: float) -> void:
 	if not _running:
 		return
 
-	for p in range(BASE_PORT, MAX_PORT + 1):
+	for p in _ports:
 		var ws: WebSocketPeer = _peers.get(p)
 
 		# No peer - try reconnect on timer
