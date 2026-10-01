@@ -7,6 +7,16 @@ const _MCP_AUTOLOADS: Array[Array] = [
 	["autoload/MCPGameInspector", "res://addons/godot_mcp/mcp_game_inspector_service.gd"],
 ]
 
+# Project setting: when false, the plugin never adds or removes the MCP
+# autoloads - the project owns them (e.g. commits them to version control).
+const _MANAGE_AUTOLOADS_SETTING := "godot_mcp_pro/manage_autoloads"
+
+# Records which autoloads this plugin injected and has not removed yet. It lives
+# in the project's editor data folder (res://.godot/editor), which is not under
+# version control, so a leftover marker means a crashed session - never a
+# committed entry (issue #48).
+const _INJECTED_MARKER_FILE := "mcp_injected_autoloads.json"
+
 const _MCP_TEMP_FILES: Array[String] = [
 	"mcp_game_request",
 	"mcp_game_response",
@@ -187,9 +197,24 @@ func _register_project_settings() -> void:
 	})
 	ProjectSettings.set_as_basic(KEY, true)
 
+	if not ProjectSettings.has_setting(_MANAGE_AUTOLOADS_SETTING):
+		ProjectSettings.set_setting(_MANAGE_AUTOLOADS_SETTING, true)
+	ProjectSettings.set_initial_value(_MANAGE_AUTOLOADS_SETTING, true)
+	ProjectSettings.add_property_info({
+		"name": _MANAGE_AUTOLOADS_SETTING,
+		"type": TYPE_BOOL,
+		"hint": PROPERTY_HINT_NONE,
+		"hint_string": "Add the MCP autoloads when the editor opens and remove them when it closes. Turn off if your project commits them; turning it off mid-session keeps the ones already added.",
+	})
+	ProjectSettings.set_as_basic(_MANAGE_AUTOLOADS_SETTING, true)
+
 
 func _inject_autoloads() -> void:
 	_session_injected_autoloads.clear()
+	if not _manages_autoloads():
+		return
+	var previously_injected := _read_injected_marker()
+	var unmarked: Array[String] = []
 	var changed := false
 	for entry: Array in _MCP_AUTOLOADS:
 		var key: String = entry[0]
@@ -203,10 +228,16 @@ func _inject_autoloads() -> void:
 
 		var existing := str(ProjectSettings.get_setting(key))
 		if existing == wanted or existing == script:
-			# Left behind by a previous session that crashed or was killed
-			# before _exit_tree ran. Reclaim it, or it stays in project.godot
-			# forever and logs "Can't autoload" once the addon is gone.
-			_session_injected_autoloads.append(key)
+			if key in previously_injected:
+				# Left behind by a previous session that crashed or was killed
+				# before _exit_tree ran. Reclaim it, or it stays in project.godot
+				# forever and logs "Can't autoload" once the addon is gone.
+				_session_injected_autoloads.append(key)
+			else:
+				# Not added by this plugin: committed on purpose (leave it alone,
+				# as #17 promised), or left by a crash whose marker is gone (for
+				# example the .godot folder was deleted). Keep it, but say so.
+				unmarked.append(key)
 		else:
 			# A different script owns this name. Injecting would clobber the
 			# project's own autoload, and not injecting leaves the matching
@@ -216,6 +247,13 @@ func _inject_autoloads() -> void:
 					key, existing, script.get_file()
 				]
 			)
+	if not unmarked.is_empty():
+		push_warning(
+			"[MCP] project.godot already has MCP autoload(s) this plugin did not add: %s. They are left alone. If they are leftovers from a crashed session, remove them from project.godot. If your project commits them on purpose, set %s = false to silence this message." % [
+				", ".join(unmarked), _MANAGE_AUTOLOADS_SETTING
+			]
+		)
+	_write_injected_marker(_session_injected_autoloads)
 	if changed:
 		ProjectSettings.save()
 
@@ -223,6 +261,12 @@ func _inject_autoloads() -> void:
 func _remove_autoloads() -> void:
 	# Only remove autoloads that THIS session injected or reclaimed.
 	# Pre-existing project-owned autoloads are preserved.
+	if not _manages_autoloads():
+		# Switched off (possibly mid-session): whatever is in project.godot now
+		# belongs to the project, including what this session added.
+		_session_injected_autoloads.clear()
+		_write_injected_marker([])
+		return
 	var changed := false
 	var wanted_by_key := {}
 	for entry: Array in _MCP_AUTOLOADS:
@@ -240,8 +284,40 @@ func _remove_autoloads() -> void:
 		ProjectSettings.set_setting(key, null)
 		changed = true
 	_session_injected_autoloads.clear()
+	_write_injected_marker([])
 	if changed:
 		ProjectSettings.save()
+
+
+func _manages_autoloads() -> bool:
+	return bool(ProjectSettings.get_setting(_MANAGE_AUTOLOADS_SETTING, true))
+
+
+func _injected_marker_path() -> String:
+	return EditorInterface.get_editor_paths().get_project_settings_dir().path_join(_INJECTED_MARKER_FILE)
+
+
+func _read_injected_marker() -> Array:
+	var path := _injected_marker_path()
+	if not FileAccess.file_exists(path):
+		return []
+	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return data if data is Array else []
+
+
+## Writes the keys this session injected; an empty list deletes the marker.
+func _write_injected_marker(keys: Array) -> void:
+	var path := _injected_marker_path()
+	if keys.is_empty():
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
+		return
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		push_warning("[MCP] Could not write %s: crash leftovers may not be reclaimed" % path)
+		return
+	f.store_string(JSON.stringify(keys))
 
 
 var _dialog_check_timer: float = 0.0
