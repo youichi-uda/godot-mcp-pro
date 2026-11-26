@@ -88,6 +88,19 @@ func _create_animation(params: Dictionary) -> Dictionary:
 	return success({"name": anim_name, "length": length, "created": true})
 
 
+## add_animation_track 'interpolation' value -> Animation.InterpolationType
+## constant name. The makima pair exists on Godot 4.8+ only.
+const _INTERPOLATION_TYPES := {
+	"nearest": "INTERPOLATION_NEAREST",
+	"linear": "INTERPOLATION_LINEAR",
+	"cubic": "INTERPOLATION_CUBIC",
+	"linear_angle": "INTERPOLATION_LINEAR_ANGLE",
+	"cubic_angle": "INTERPOLATION_CUBIC_ANGLE",
+	"makima": "INTERPOLATION_MAKIMA",
+	"makima_angle": "INTERPOLATION_MAKIMA_ANGLE",
+}
+
+
 func _add_animation_track(params: Dictionary) -> Dictionary:
 	var result := require_string(params, "node_path")
 	if result[1] != null:
@@ -124,11 +137,25 @@ func _add_animation_track(params: Dictionary) -> Dictionary:
 		"blend_shape": track_type = Animation.TYPE_BLEND_SHAPE
 		_: track_type = Animation.TYPE_VALUE
 
+	# Interpolation. Makima (smooth, no overshoot) is Godot 4.8+; its enum
+	# values are looked up by name so this file still parses on older versions.
+	var interpolation_str: String = optional_string(params, "interpolation", "")
+	var interpolation := -1
+	if not interpolation_str.is_empty():
+		if not _INTERPOLATION_TYPES.has(interpolation_str):
+			return error_invalid_params("Unknown interpolation '%s'. Valid: %s" % [interpolation_str, ", ".join(_INTERPOLATION_TYPES.keys())])
+		var constant_name: String = _INTERPOLATION_TYPES[interpolation_str]
+		if not ClassDB.class_get_enum_constants("Animation", "InterpolationType").has(constant_name):
+			return error_requires_godot("add_animation_track interpolation '%s'" % interpolation_str, "4.8")
+		interpolation = ClassDB.class_get_integer_constant("Animation", constant_name)
+
 	var track_idx := anim.get_track_count()
 	var undo_redo := get_undo_redo()
 	undo_redo.create_action("MCP: Add animation track")
 	undo_redo.add_do_method(anim, "add_track", track_type, track_idx)
 	undo_redo.add_do_method(anim, "track_set_path", track_idx, NodePath(track_path))
+	if interpolation >= 0:
+		undo_redo.add_do_method(anim, "track_set_interpolation_type", track_idx, interpolation)
 
 	var update_mode_str: String = optional_string(params, "update_mode", "")
 	if not update_mode_str.is_empty() and track_type == Animation.TYPE_VALUE:
@@ -139,7 +166,10 @@ func _add_animation_track(params: Dictionary) -> Dictionary:
 	undo_redo.add_undo_method(anim, "remove_track", track_idx)
 	undo_redo.commit_action()
 
-	return success({"track_index": track_idx, "track_path": track_path, "track_type": track_type_str})
+	var track_out := {"track_index": track_idx, "track_path": track_path, "track_type": track_type_str}
+	if interpolation >= 0:
+		track_out["interpolation"] = interpolation_str
+	return success(track_out)
 
 
 func _set_animation_keyframe(params: Dictionary) -> Dictionary:

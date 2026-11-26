@@ -12,6 +12,7 @@ func get_commands() -> Dictionary:
 		"setup_control": _setup_control,
 		"get_theme_info": _get_theme_info,
 		"add_virtual_joystick": _add_virtual_joystick,
+		"set_theme_sound": _set_theme_sound,
 	}
 
 
@@ -372,6 +373,12 @@ func _restore_theme_override(control: Control, kind: String, override_name: Stri
 				control.add_theme_stylebox_override(override_name, old_value)
 			else:
 				control.remove_theme_stylebox_override(override_name)
+		"sound":
+			# Godot 4.8+ API, called by name so this file still parses on older versions.
+			if had_old:
+				control.call("add_theme_sound_override", override_name, old_value)
+			else:
+				control.call("remove_theme_sound_override", override_name)
 
 
 ## Control properties that only exist on newer Godot versions, with the version
@@ -388,6 +395,16 @@ const _VERSIONED_CONTROL_PROPERTIES := {
 	"offset_transform_pivot": "4.7",
 	"offset_transform_pivot_ratio": "4.7",
 	"offset_transform_visual_only": "4.7",
+	"resize_font_to_fit": "4.8",
+	"minimum_font_size": "4.8",
+	"maximum_font_size": "4.8",
+}
+
+## fit_text sub-keys -> the Label / RichTextLabel property (Godot 4.8+).
+const _FIT_TEXT_KEYS := {
+	"enabled": "resize_font_to_fit",
+	"min_font_size": "minimum_font_size",
+	"max_font_size": "maximum_font_size",
 }
 
 ## offset_transform sub-keys that take a Vector2 -> the Control property.
@@ -452,6 +469,33 @@ func _parse_control_extras(params: Dictionary, control: Control) -> Dictionary:
 		# enabling it would look like a silent no-op. enabled=false still wins.
 		if not ot.is_empty() and not ot.has("enabled"):
 			props["offset_transform_enabled"] = true
+
+	if params.has("fit_text"):
+		if not params["fit_text"] is Dictionary:
+			return error_invalid_params("fit_text must be an object, e.g. {\"enabled\": true, \"min_font_size\": 10, \"max_font_size\": 48}")
+		# Resize-to-fit exists on Label and RichTextLabel only; on any other
+		# Control the missing property is not a version problem.
+		if not (control is Label or control is RichTextLabel):
+			return error_invalid_params("fit_text only applies to Label and RichTextLabel nodes, not %s" % control.get_class())
+		var ft: Dictionary = params["fit_text"]
+		for key: Variant in ft:
+			var k := str(key)
+			if not _FIT_TEXT_KEYS.has(k):
+				return error_invalid_params("Unknown fit_text key '%s'. Valid: enabled, min_font_size, max_font_size" % k)
+			if k == "enabled":
+				if not ft[key] is bool:
+					return error_invalid_params("fit_text.enabled must be a boolean")
+				props["resize_font_to_fit"] = ft[key]
+			else:
+				if not (ft[key] is int or ft[key] is float) or float(ft[key]) < 1.0 or float(ft[key]) != floorf(float(ft[key])):
+					return error_invalid_params("fit_text.%s must be a whole number of 1 or more" % k)
+				props[_FIT_TEXT_KEYS[k]] = int(ft[key])
+		if props.has("minimum_font_size") and props.has("maximum_font_size") and props["minimum_font_size"] > props["maximum_font_size"]:
+			return error_invalid_params("fit_text.min_font_size must not exceed max_font_size")
+		# Sizes do nothing while the feature is off; giving them without
+		# 'enabled' turns it on. enabled=false still wins.
+		if not ft.is_empty() and not ft.has("enabled"):
+			props["resize_font_to_fit"] = true
 
 	for property: String in props:
 		if not _control_has_property(control, property):
@@ -671,6 +715,69 @@ func _add_virtual_joystick(params: Dictionary) -> Dictionary:
 	return success(info)
 
 
+## set_theme_sound (Godot 4.8+): overrides one of a Control's theme sound
+## items (e.g. "pressed_sound", "focus_sound") with an AudioStream, or removes
+## the override when 'stream' is empty. The 4.8 API is called by name so this
+## file still parses on older versions.
+func _set_theme_sound(params: Dictionary) -> Dictionary:
+	var result := require_string(params, "node_path")
+	if result[1] != null:
+		return result[1]
+	var node_path: String = result[0]
+
+	var result2 := require_string(params, "name")
+	if result2[1] != null:
+		return result2[1]
+	var sound_name: String = result2[0]
+
+	var node := find_node_by_path(node_path)
+	if node == null or not (node is Control):
+		return error_not_found("Control node at '%s'" % node_path)
+	var control: Control = node
+
+	if not control.has_method("add_theme_sound_override"):
+		return error_requires_godot("set_theme_sound", "4.8")
+
+	# The sound items a control type actually plays are the ones its property
+	# list exposes; an override under any other name would never be heard.
+	var available: Array = []
+	for prop in control.get_property_list():
+		var pname: String = prop["name"]
+		if pname.begins_with("theme_override_sounds/"):
+			available.append(pname.substr(22))
+	if not available.has(sound_name):
+		return error_invalid_params("%s has no theme sound '%s'. Available: %s" % [
+			control.get_class(), sound_name, ", ".join(available) if not available.is_empty() else "(none)"])
+
+	var stream_path: String = optional_string(params, "stream", "")
+	var stream: AudioStream = null
+	if not stream_path.is_empty():
+		if not ResourceLoader.exists(stream_path):
+			return error_not_found("Audio stream '%s'" % stream_path)
+		stream = ResourceLoader.load(stream_path) as AudioStream
+		if stream == null:
+			return error_invalid_params("'%s' is not an AudioStream" % stream_path)
+
+	var had_old: bool = control.call("has_theme_sound_override", sound_name)
+	var old_value: Variant = control.get("theme_override_sounds/" + sound_name) if had_old else null
+	var undo_redo := get_undo_redo()
+	undo_redo.create_action("MCP: Set theme sound override")
+	if stream != null:
+		undo_redo.add_do_method(control, "add_theme_sound_override", sound_name, stream)
+	else:
+		undo_redo.add_do_method(control, "remove_theme_sound_override", sound_name)
+	undo_redo.add_undo_method(self, "_restore_theme_override", control, "sound", sound_name, had_old, old_value)
+	undo_redo.commit_action()
+
+	return success({
+		"node_path": node_path,
+		"name": sound_name,
+		"stream": stream_path,
+		"removed": stream == null,
+		"had_override": had_old,
+	})
+
+
 func _get_theme_info(params: Dictionary) -> Dictionary:
 	var result := require_string(params, "node_path")
 	if result[1] != null:
@@ -690,23 +797,30 @@ func _get_theme_info(params: Dictionary) -> Dictionary:
 		info["theme_path"] = theme.resource_path
 		info["type_list"] = Array(theme.get_type_list())
 
-	# List overrides
+	# List the overrides that are actually set. Every theme item of the control
+	# appears in the property list, holding null while it is not overridden.
 	var overrides := {"colors": {}, "constants": {}, "font_sizes": {}, "styleboxes": {}}
 	for prop in control.get_property_list():
 		var pname: String = prop["name"]
+		if not pname.begins_with("theme_override_"):
+			continue
+		var value: Variant = control.get(pname)
+		if value == null:
+			continue
 		if pname.begins_with("theme_override_colors/"):
-			var key := pname.substr(22)
-			overrides["colors"][key] = "#" + (control.get(pname) as Color).to_html()
+			if value is Color:
+				overrides["colors"][pname.substr(22)] = "#" + (value as Color).to_html()
 		elif pname.begins_with("theme_override_constants/"):
-			var key := pname.substr(25)
-			overrides["constants"][key] = control.get(pname)
+			overrides["constants"][pname.substr(25)] = value
 		elif pname.begins_with("theme_override_font_sizes/"):
-			var key := pname.substr(26)
-			overrides["font_sizes"][key] = control.get(pname)
+			overrides["font_sizes"][pname.substr(26)] = value
 		elif pname.begins_with("theme_override_styles/"):
-			var key := pname.substr(22)
-			var style = control.get(pname)
-			overrides["styleboxes"][key] = style.get_class() if style else null
+			overrides["styleboxes"][pname.substr(22)] = (value as Object).get_class()
+		elif pname.begins_with("theme_override_sounds/"):
+			# Godot 4.8+.
+			if not overrides.has("sounds"):
+				overrides["sounds"] = {}
+			overrides["sounds"][pname.substr(22)] = (value as Resource).resource_path if value is Resource else str(value)
 
 	info["overrides"] = overrides
 	return success(info)

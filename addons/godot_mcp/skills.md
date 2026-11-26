@@ -6,7 +6,7 @@
 
 ## What is Godot MCP Pro?
 
-You have access to 169 MCP tools that connect directly to the Godot 4 editor. You can create scenes, write scripts, simulate player input, inspect running games, and more — all without the user leaving this conversation. Every change goes through Godot's UndoRedo system, so the user can always Ctrl+Z.
+You have access to 190 MCP tools that connect directly to the Godot 4 editor. You can create scenes, write scripts, simulate player input, inspect running games, and more — all without the user leaving this conversation. Every change goes through Godot's UndoRedo system, so the user can always Ctrl+Z.
 
 ## Essential Workflows
 
@@ -54,6 +54,7 @@ set_material_3d      → PBR materials (albedo, metallic, roughness, emission)
 setup_collision      → add collision shapes to physics bodies
 setup_physics_body   → configure mass, friction, gravity
 get_gridmap_info     → inspect a GridMap: MeshLibrary, used-cell bounds, per-item counts (filter cells by item/bounds)
+add_trail_3d         → add a Trail3D ribbon drawn behind a moving object — sword swings, projectiles (Godot 4.8+)
 ```
 
 ### 4. Write & Edit Scripts
@@ -122,6 +123,7 @@ set_theme_font_size → adjust text size
 set_theme_stylebox  → backgrounds, borders, rounded corners
 connect_signal    → wire up button pressed, value_changed, etc.
 add_virtual_joystick → on-screen touch joystick that presses input actions (Godot 4.7+; enable input_devices/pointing/emulate_touch_from_mouse to test with a mouse)
+set_theme_sound   → set or remove a theme sound override on a Control: pressed_sound, hover_sound, focus_sound, … (Godot 4.8+)
 ```
 
 ### 8. TileMap
@@ -220,6 +222,7 @@ analyze_signal_flow        → visualize signal connections
 detect_circular_dependencies → find circular script/scene references
 find_unused_resources      → clean up unused files
 get_performance_monitors   → FPS, memory, draw calls, physics stats
+show_editor_dock           → bring an editor dock or main screen to the front (2D, 3D, Script, Output, …); call without a name to list them (docks other than main screens need Godot 4.6+)
 ```
 
 ## Testing & QA

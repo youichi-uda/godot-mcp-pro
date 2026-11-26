@@ -2,7 +2,7 @@
 
 # Godot MCP Pro
 
-AI-powered Godot गेम डेवलपमेंट के लिए प्रीमियम MCP (Model Context Protocol) सर्वर। Claude जैसे AI assistants को सीधे आपके Godot editor से जोड़ता है, **187 powerful tools** के साथ।
+AI-powered Godot गेम डेवलपमेंट के लिए प्रीमियम MCP (Model Context Protocol) सर्वर। Claude जैसे AI assistants को सीधे आपके Godot editor से जोड़ता है, **190 powerful tools** के साथ।
 
 ## Architecture
 
@@ -65,12 +65,12 @@ Godot MCP Pro हर client की tool limit के हिसाब से च�
 
 | Mode | Tools | किसके लिए सबसे अच्छा |
 |------|-------|----------|
-| **Full** (default) | 187 | Claude Code, Cline, VS Code Copilot, Cursor |
+| **Full** (default) | 190 | Claude Code, Cline, VS Code Copilot, Cursor |
 | **3D** (`--3d`) | 100 | Antigravity और 3D की जरूरत वाले अन्य 100-tool-limit clients |
 | **Lite** (`--lite`) | 88 | Windsurf, JetBrains Junie, Gemini CLI |
 | **Minimal** (`--minimal`) | 35 | OpenCode, छोटे context वाले local LLMs |
 
-`--3d` में core tools के साथ physics, AnimationTree और navigation शामिल हैं, लेकिन 100-tool cap के अंदर रहने के लिए `uid_to_project_path`, `project_path_to_uid`, `compare_screenshots`, `clear_output`, `close_script`, `reload_open_scripts`, `set_anchor_preset` और `click_button_by_text` को छोड़ दिया गया है।
+`--3d` में core tools के साथ physics, AnimationTree और navigation शामिल हैं, लेकिन 100-tool cap के अंदर रहने के लिए `uid_to_project_path`, `project_path_to_uid`, `compare_screenshots`, `clear_output`, `close_script`, `reload_open_scripts`, `set_anchor_preset`, `click_button_by_text` और `show_editor_dock` को छोड़ दिया गया है।
 
 ```json
 {
@@ -137,14 +137,14 @@ CLI WebSocket के जरिए सीधे Godot editor plugin से connec
 
 Plugin enabled state में अपना Godot project खोलें, फिर editor के साथ interact करने के लिए Claude Code use करें।
 
-## सभी 187 Tools
+## सभी 190 Tools
 
 ### Project Tools (10)
 | Tool | विवरण |
 |------|-------------|
 | `get_project_info` | Project metadata, version, viewport, autoloads |
 | `get_filesystem_tree` | Filtering के साथ recursive file tree |
-| `search_files` | Fuzzy/glob file search |
+| `search_files` | Fuzzy/glob file search (Godot 4.8+ पर `fuzzy` के साथ engine FuzzySearch ranking) |
 | `search_in_files` | Project files में content search करें |
 | `get_project_settings` | project.godot settings पढ़ें |
 | `set_project_setting` | Editor API से project settings set करें |
@@ -201,7 +201,7 @@ Plugin enabled state में अपना Godot project खोलें, फ�
 | `reload_open_scripts` | Unsaved buffers रखते हुए open scripts को disk से reload करें (Godot 4.7+) |
 | `get_open_scripts` | Editor में open scripts list करें |
 
-### Editor Tools (15)
+### Editor Tools (16)
 | Tool | विवरण |
 |------|-------------|
 | `get_editor_errors` | Errors और stack traces पाएं |
@@ -219,6 +219,7 @@ Plugin enabled state में अपना Godot project खोलें, फ�
 | `set_editor_camera` | View frame करने के लिए 3D editor camera move करें |
 | `get_unsaved_state` | Unsaved changes वाले open scenes/scripts report करें (unsaved lists के लिए Godot 4.7+ जरूरी) |
 | `save_all` | सभी open scenes और modified script buffers save करें, क्या save हुआ यह report करें (scripts के लिए Godot 4.7+ जरूरी) |
+| `show_editor_dock` | Editor dock या main screen को front पर लाएं (2D, 3D, Script, Game, FileSystem, Inspector, Output, ...), या बिना name के call करने पर उनकी list दें (main screens के अलावा docks के लिए Godot 4.6+ जरूरी) |
 
 ### Input Tools (5)
 | Tool | विवरण |
@@ -264,7 +265,7 @@ Plugin enabled state में अपना Godot project खोलें, फ�
 |------|-------------|
 | `list_animations` | AnimationPlayer की सभी animations list करें |
 | `create_animation` | नई animation बनाएं |
-| `add_animation_track` | Track add करें (value/position/rotation/method/bezier) |
+| `add_animation_track` | Track add करें (value/position/rotation/method/bezier), interpolation mode के साथ (Godot 4.8+ पर makima) |
 | `set_animation_keyframe` | Track में keyframe insert करें |
 | `get_animation_info` | सभी tracks/keys के साथ detailed animation info |
 | `remove_animation` | Animation remove करें |
@@ -279,7 +280,7 @@ Plugin enabled state में अपना Godot project खोलें, फ�
 | `tilemap_get_info` | TileMapLayer info और tile set sources |
 | `tilemap_get_used_cells` | Used cells की list |
 
-### Theme & UI Tools (8)
+### Theme & UI Tools (9)
 | Tool | विवरण |
 |------|-------------|
 | `create_theme` | Theme resource file बनाएं |
@@ -287,9 +288,10 @@ Plugin enabled state में अपना Godot project खोलें, फ�
 | `set_theme_constant` | Theme constant override set करें |
 | `set_theme_font_size` | Theme font size override set करें |
 | `set_theme_stylebox` | StyleBoxFlat override set करें |
-| `setup_control` | एक call में Control/Container layout configure करें |
+| `setup_control` | एक call में Control/Container layout configure करें (Godot 4.8+ पर `fit_text` font resize-to-fit) |
 | `add_virtual_joystick` | Input actions से bound on-screen VirtualJoystick add करें (Godot 4.7+) |
-| `get_theme_info` | Theme overrides info पाएं |
+| `set_theme_sound` | Control पर theme sound override set या remove करें (pressed_sound, hover_sound, focus_sound, ...) (Godot 4.8+) |
+| `get_theme_info` | Theme overrides info पाएं (Godot 4.8+ पर sound overrides) |
 
 ### Profiling Tools (2)
 | Tool | विवरण |
@@ -344,22 +346,23 @@ Plugin enabled state में अपना Godot project खोलें, फ�
 | `setup_physics_body` | Physics body properties configure करें |
 | `get_collision_info` | Collision shape details पाएं |
 
-### 3D Scene Tools (7)
+### 3D Scene Tools (8)
 | Tool | विवरण |
 |------|-------------|
 | `add_mesh_instance` | Primitive mesh के साथ MeshInstance3D add करें |
-| `setup_lighting` | Light nodes add/configure करें |
+| `setup_lighting` | Light nodes add/configure करें (Godot 4.8+ पर contact shadows) |
 | `set_material_3d` | StandardMaterial3D properties set करें |
 | `setup_environment` | WorldEnvironment configure करें |
 | `setup_camera_3d` | Camera3D properties configure करें |
 | `add_gridmap` | GridMap node set up करें |
 | `get_gridmap_info` | GridMap inspect करें: MeshLibrary, bounds, per-item counts, filtered cells (4.7+ पर octant summary) |
+| `add_trail_3d` | Moving object के पीछे draw होने वाला Trail3D ribbon add करें (Godot 4.8+) |
 
 ### Particle Tools (5)
 | Tool | विवरण |
 |------|-------------|
 | `create_particles` | GPUParticles2D/3D बनाएं |
-| `set_particle_material` | ParticleProcessMaterial configure करें |
+| `set_particle_material` | ParticleProcessMaterial configure करें (Godot 4.8+ पर `preserve_color`) |
 | `set_particle_color_gradient` | Particles के लिए color gradient set करें |
 | `apply_particle_preset` | Preset apply करें (fire, smoke, sparks, etc.) |
 | `get_particle_info` | Particle system details पाएं |
@@ -448,19 +451,19 @@ Plugin enabled state में अपना Godot project खोलें, फ�
 | Scene | 10 | 8 | 11 | 9 | 3 | 4 | 5 |
 | Node | **17** | 8 | 0 | 8 | 2 | 3 | 0 |
 | Script | **9** | 5 | 6 | 4 | 0 | 5 | 0 |
-| Editor | **15** | 5 | 1 | 5 | 1 | 3 | 2 |
+| Editor | **16** | 5 | 1 | 5 | 1 | 3 | 2 |
 | Input | **7** | 2 | 0 | 0 | 0 | 0 | 0 |
 | Runtime | **20** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Animation | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | TileMap | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| Theme/UI | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Theme/UI | **9** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Profiling | **2** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Batch/Refactor | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Shader | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Export | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Resource | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Physics | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| 3D Scene | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
+| 3D Scene | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Particle | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Navigation | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Audio | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -472,7 +475,7 @@ Plugin enabled state में अपना Godot project खोलें, फ�
 | Other | 0 | 0 | 9 | 5 | 5 | 2 | 1 |
 | Headless | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Android Deploy | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
-| **Total** | **187** | ~30 | **32** | **39** | **13** | **19** | **10** |
+| **Total** | **190** | ~30 | **32** | **39** | **13** | **19** | **10** |
 
 ### Feature Matrix
 
@@ -497,13 +500,13 @@ Plugin enabled state में अपना Godot project खोलें, फ�
 |----------|-------|----------------|
 | **Animation** | 6 tools | Animations बनाएं, tracks add करें, keyframes set करें — सब programmatically |
 | **TileMap** | 6 tools | Cells set करें, rects fill करें, tile data query करें — 2D level design के लिए जरूरी |
-| **Theme/UI** | 8 tools | StyleBox, colors, fonts — manual editor work के बिना UI themes बनाएं |
+| **Theme/UI** | 9 tools | StyleBox, colors, fonts — manual editor work के बिना UI themes बनाएं |
 | **Profiling** | 2 tools | FPS, memory, draw calls, physics — performance monitoring |
 | **Batch/Refactor** | 7 tools | Type से खोजें, batch property changes, cross-scene updates, dependency analysis |
 | **Shader** | 6 tools | Shaders create/edit करें, materials assign करें, parameters set करें |
 | **Export** | 4 tools | Presets list करें, export commands पाएं, templates check करें |
 | **Physics** | 6 tools | Collision shapes, bodies, raycasts और layer management set up करें |
-| **3D Scene** | 7 tools | Meshes, cameras, lights, environment add करें, GridMap support |
+| **3D Scene** | 8 tools | Meshes, cameras, lights, environment add करें, GridMap support |
 | **Particle** | 5 tools | Custom materials, presets और gradients के साथ particles बनाएं |
 | **Navigation** | 5 tools | Navigation regions, agents, pathfinding, baking configure करें |
 | **Audio** | 6 tools | Complete audio bus system, effects, players, live management |

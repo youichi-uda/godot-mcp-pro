@@ -27,6 +27,20 @@ const HANDSHAKE_TIMEOUT := 10.0  # give up on a socket stuck CONNECTING/CLOSING
 const TOKEN_PATH := "user://mcp_auth_token"
 const TOKEN_SETTING := "godot_mcp_pro/require_connection_token"
 const AUTH_TIMEOUT := 5.0  # close a peer that has not authenticated in time
+## Port registry. Servers since v1.17.2 announce their port by writing a file
+## named after it into <home>/.godot-mcp-pro/ports and <temp>/godot-mcp-pro/ports.
+## Once such a folder exists, only announced ports are dialled. Dialling ports
+## with nobody listening makes Godot print "Unable to set TCP no delay option"
+## on macOS 27, once per attempt.
+const REGISTRY_POLL_INTERVAL := 1.0
+## Ports that keep failing are retried less often: every failed dial doubles
+## the wait, capped here. A lost connection is retried after 3s, then 6s, 12s,
+## 24s, 30s; a port that never connects is retried after 6s, 12s, 24s, 30s.
+const MAX_RECONNECT_INTERVAL := 30.0
+## An announced port that fails this many times in a row is treated as left
+## behind by a server that crashed, and is not dialled again until a server
+## writes a new entry for it.
+const MAX_REGISTERED_FAILURES := 5
 
 # Per-port connection state
 var _peers: Dictionary = {}  # port -> WebSocketPeer
@@ -41,16 +55,28 @@ var _authed: Dictionary = {}  # port -> bool (token accepted, or auth not requir
 var _auth_timers: Dictionary = {}  # port -> float (seconds awaiting auth)
 var _auth_token: String = ""  # empty when the token requirement is off
 var _running: bool = false
+var _registry_active: bool = false  # a registry folder exists: dial announced ports only
+var _registered: Dictionary = {}  # port -> String (entry contents, to spot a new server)
+var _registry_timer: float = 0.0
+var _retry_delay: Dictionary = {}  # port -> float (current reconnect interval)
+var _fail_streak: Dictionary = {}  # port -> int (dials in a row that never reached OPEN)
 
 
 func start_server() -> void:
 	_running = true
 	_auth_token = _prepare_auth_token()
+	_registered.clear()
+	_refresh_registry()
 	for p in range(BASE_PORT, MAX_PORT + 1):
 		_connected[p] = false
 		_timers[p] = 0.0
-		_try_connect(p)
-	print("[MCP] Connecting to ports %d-%d" % [BASE_PORT, MAX_PORT])
+		_retry_delay[p] = RECONNECT_INTERVAL
+		if _may_dial(p):
+			_try_connect(p)
+	if _registry_active:
+		print("[MCP] Connecting to MCP servers listed in the port registry (ports %d-%d)" % [BASE_PORT, MAX_PORT])
+	else:
+		print("[MCP] Connecting to ports %d-%d" % [BASE_PORT, MAX_PORT])
 
 
 func stop_server() -> void:
@@ -69,6 +95,9 @@ func stop_server() -> void:
 	_handshake_timers.clear()
 	_authed.clear()
 	_auth_timers.clear()
+	_retry_delay.clear()
+	_fail_streak.clear()
+	_registered.clear()
 	print("[MCP] WebSocket client stopped")
 
 
@@ -109,19 +138,93 @@ func _try_connect(p: int) -> void:
 		_peers[p] = ws
 	else:
 		_peers[p] = null
+		_back_off(p)
+
+
+## Folders a server may have written its registry entries to. Node takes the
+## temp folder from $TMPDIR while Godot on macOS asks the OS, so every
+## plausible candidate is read; the home folder is the one both agree on.
+func _registry_dirs() -> PackedStringArray:
+	var dirs := PackedStringArray()
+	var home := OS.get_environment("USERPROFILE") if OS.get_name() == "Windows" else OS.get_environment("HOME")
+	if not home.is_empty():
+		dirs.append(home.path_join(".godot-mcp-pro").path_join("ports"))
+	var temps := PackedStringArray()
+	if OS.has_method("get_temp_dir"):
+		temps.append(str(OS.call("get_temp_dir")))
+	for v in ["TMPDIR", "TEMP", "TMP"]:
+		temps.append(OS.get_environment(v))
+	if OS.get_name() != "Windows":
+		temps.append("/tmp")
+	for t in temps:
+		if t.is_empty():
+			continue
+		var d := t.replace("\\", "/").trim_suffix("/").path_join("godot-mcp-pro").path_join("ports")
+		if not dirs.has(d):
+			dirs.append(d)
+	return dirs
+
+
+func _refresh_registry() -> void:
+	var found: Dictionary = {}
+	var any_dir := false
+	for d in _registry_dirs():
+		var da := DirAccess.open(d)
+		if da == null:
+			continue
+		any_dir = true
+		for f in da.get_files():
+			if not f.is_valid_int():
+				continue
+			var p := f.to_int()
+			if p < BASE_PORT or p > MAX_PORT or found.has(p):
+				continue
+			found[p] = FileAccess.get_file_as_string(d.path_join(f))
+	if any_dir and not _registry_active:
+		print_verbose("[MCP] Port registry found; dialling announced ports only")
+	_registry_active = any_dir
+	for p: int in found:
+		# A port that is newly announced, or announced by a different server
+		# process than before, is dialled at once rather than after its backoff.
+		if _registered.get(p, null) != found[p]:
+			_retry_delay[p] = RECONNECT_INTERVAL
+			_fail_streak[p] = 0
+			_timers[p] = RECONNECT_INTERVAL
+	_registered = found
+
+
+## Without a registry (servers older than v1.17.2, or a temp folder we cannot
+## see) every port is tried. With one, only announced ports are.
+func _may_dial(p: int) -> bool:
+	if not _registry_active:
+		return true
+	return _registered.has(p) and _fail_streak.get(p, 0) < MAX_REGISTERED_FAILURES
+
+
+func _back_off(p: int) -> void:
+	_fail_streak[p] = _fail_streak.get(p, 0) + 1
+	_retry_delay[p] = minf(_retry_delay.get(p, RECONNECT_INTERVAL) * 2.0, MAX_RECONNECT_INTERVAL)
 
 
 func _process(delta: float) -> void:
 	if not _running:
 		return
 
+	_registry_timer += delta
+	if _registry_timer >= REGISTRY_POLL_INTERVAL:
+		_registry_timer = 0.0
+		_refresh_registry()
+
 	for p in range(BASE_PORT, MAX_PORT + 1):
 		var ws: WebSocketPeer = _peers.get(p)
 
-		# No peer - try reconnect on timer
+		# No peer - try reconnect on timer, but only where a server may be.
 		if ws == null:
+			if not _may_dial(p):
+				_timers[p] = 0.0
+				continue
 			_timers[p] = _timers.get(p, 0.0) + delta
-			if _timers[p] >= RECONNECT_INTERVAL:
+			if _timers[p] >= _retry_delay.get(p, RECONNECT_INTERVAL):
 				_timers[p] = 0.0
 				_try_connect(p)
 			continue
@@ -139,6 +242,8 @@ func _process(delta: float) -> void:
 					_ping_timers[p] = 0.0
 					_stale_ports[p] = false
 					_timers[p] = 0.0
+					_retry_delay[p] = RECONNECT_INTERVAL
+					_fail_streak[p] = 0
 					# With no token required this is true immediately, so the
 					# whole mechanism is inert for existing setups.
 					_authed[p] = _auth_token.is_empty()
@@ -215,12 +320,16 @@ func _process(delta: float) -> void:
 					_connected[p] = false
 					_peers[p] = null
 					_timers[p] = 0.0
+					_back_off(p)
 
 			WebSocketPeer.STATE_CLOSED:
 				if _connected.get(p, false):
 					_connected[p] = false
 					print_verbose("[MCP] Disconnected from port %d" % p)
 					client_disconnected.emit()
+				else:
+					# Never reached OPEN: nobody useful is listening here.
+					_back_off(p)
 				_peers[p] = null
 				_timers[p] = 0.0
 				_last_activity[p] = 0.0

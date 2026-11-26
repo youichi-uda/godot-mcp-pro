@@ -6,7 +6,7 @@
 
 ## 什么是 Godot MCP Pro？
 
-你可以使用 169 个 MCP 工具直接连接 Godot 4 编辑器。你可以创建场景、编写脚本、模拟玩家输入、检查运行中的游戏等等——所有操作都无需用户离开当前对话。每次更改都通过 Godot 的 UndoRedo 系统进行，因此用户随时可以 Ctrl+Z 撤销。
+你可以使用 190 个 MCP 工具直接连接 Godot 4 编辑器。你可以创建场景、编写脚本、模拟玩家输入、检查运行中的游戏等等——所有操作都无需用户离开当前对话。每次更改都通过 Godot 的 UndoRedo 系统进行，因此用户随时可以 Ctrl+Z 撤销。
 
 ## 核心工作流
 
@@ -54,6 +54,7 @@ set_material_3d      → PBR 材质（albedo、metallic、roughness、emission�
 setup_collision      → 为物理体添加碰撞形状
 setup_physics_body   → 配置质量、摩擦力、重力
 get_gridmap_info     → 检查 GridMap：MeshLibrary、已用单元格范围、各物品数量（可按物品/范围筛选单元格）
+add_trail_3d         → 添加 Trail3D，在移动物体后方绘制的带状拖尾（Godot 4.8+）
 ```
 
 ### 4. 编写和编辑脚本
@@ -122,6 +123,7 @@ set_theme_font_size → 调整文字大小
 set_theme_stylebox  → 背景、边框、圆角
 connect_signal    → 连接 button 的 pressed、value_changed 等信号
 add_virtual_joystick → 触发输入动作的屏幕触摸摇杆（Godot 4.7+；用鼠标测试需启用 input_devices/pointing/emulate_touch_from_mouse）
+set_theme_sound   → 设置或移除 Control 的主题音效覆盖：pressed_sound、hover_sound、focus_sound 等（Godot 4.8+）
 ```
 
 ### 8. TileMap
@@ -217,6 +219,7 @@ analyze_signal_flow        → 可视化信号连接
 detect_circular_dependencies → 查找脚本/场景的循环引用
 find_unused_resources      → 清理未使用的文件
 get_performance_monitors   → FPS、内存、绘制调用、物理统计
+show_editor_dock           → 将编辑器停靠面板或主屏幕（2D、3D、Script、Output 等）切换到前台；不传名称则列出可用项（主屏幕以外的停靠面板需要 Godot 4.6+）
 ```
 
 ## 测试与 QA

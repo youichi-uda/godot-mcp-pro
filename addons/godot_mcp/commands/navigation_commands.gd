@@ -136,12 +136,10 @@ func _bake_navigation_mesh(params: Dictionary) -> Dictionary:
 
 	elif node is NavigationRegion2D:
 		var region: NavigationRegion2D = node as NavigationRegion2D
-		if region.navigation_polygon == null:
-			var nav_poly := NavigationPolygon.new()
-			region.navigation_polygon = nav_poly
-
 		# Set outline vertices from params
 		if params.has("outline"):
+			if not params["outline"] is Array:
+				return error_invalid_params("'outline' must be an array of points")
 			var outline_data: Array = params["outline"]
 			var outline := PackedVector2Array()
 			for point in outline_data:
@@ -151,12 +149,20 @@ func _bake_navigation_mesh(params: Dictionary) -> Dictionary:
 					outline.append(Vector2(float(point.get("x", 0)), float(point.get("y", 0))))
 
 			if outline.size() >= 3:
-				# Clear existing outlines
-				while region.navigation_polygon.get_outline_count() > 0:
-					region.navigation_polygon.remove_outline(0)
-				region.navigation_polygon.add_outline(outline)
-				region.navigation_polygon.make_polygons_from_outlines()
-				mark_current_scene_unsaved()
+				# Build the polygons on a resource that no region uses yet, then
+				# assign it. Calling make_polygons_from_outlines() on the polygon
+				# a NavigationRegion2D in the tree already holds freezes the
+				# editor (reproduced on Godot 4.7.2 and 4.8 beta 5).
+				var built: NavigationPolygon
+				if region.navigation_polygon != null:
+					built = region.navigation_polygon.duplicate() as NavigationPolygon
+				else:
+					built = NavigationPolygon.new()
+				built.clear_outlines()
+				built.clear_polygons()
+				built.add_outline(outline)
+				built.make_polygons_from_outlines()
+				set_property_with_undo(region, "navigation_polygon", built, "MCP: Bake navigation polygon from outline")
 				return success({
 					"node_path": node_path,
 					"type": "NavigationRegion2D",
@@ -166,6 +172,8 @@ func _bake_navigation_mesh(params: Dictionary) -> Dictionary:
 			else:
 				return error_invalid_params("Outline must have at least 3 vertices")
 		else:
+			if region.navigation_polygon == null:
+				region.navigation_polygon = NavigationPolygon.new()
 			# Try baking from source geometry
 			region.bake_navigation_polygon()
 			mark_current_scene_unsaved()

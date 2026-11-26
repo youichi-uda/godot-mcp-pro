@@ -6,7 +6,7 @@
 
 ## O que é o Godot MCP Pro?
 
-Você tem acesso a 169 ferramentas MCP que se conectam diretamente ao editor Godot 4. Você pode criar cenas, escrever scripts, simular entrada do jogador, inspecionar jogos em execução e muito mais — tudo sem que o usuário precise sair desta conversa. Todas as alterações passam pelo sistema UndoRedo do Godot, então o usuário pode sempre usar Ctrl+Z.
+Você tem acesso a 190 ferramentas MCP que se conectam diretamente ao editor Godot 4. Você pode criar cenas, escrever scripts, simular entrada do jogador, inspecionar jogos em execução e muito mais — tudo sem que o usuário precise sair desta conversa. Todas as alterações passam pelo sistema UndoRedo do Godot, então o usuário pode sempre usar Ctrl+Z.
 
 ## Fluxos de Trabalho Essenciais
 
@@ -54,6 +54,7 @@ set_material_3d      → materiais PBR (albedo, metallic, roughness, emission)
 setup_collision      → adicionar shapes de colisão a corpos físicos
 setup_physics_body   → configurar massa, atrito, gravidade
 get_gridmap_info     → inspecionar um GridMap: MeshLibrary, limites das células usadas, contagem por item (filtrar células por item/limites)
+add_trail_3d         → adicionar um Trail3D, um rastro em forma de fita desenhado atrás de um objeto em movimento (Godot 4.8+)
 ```
 
 ### 4. Escrever e Editar Scripts
@@ -122,6 +123,7 @@ set_theme_font_size → ajustar tamanho do texto
 set_theme_stylebox  → fundos, bordas, cantos arredondados
 connect_signal    → conectar pressed do button, value_changed, etc.
 add_virtual_joystick → joystick de toque na tela que aciona ações de entrada (Godot 4.7+; ative input_devices/pointing/emulate_touch_from_mouse para testar com o mouse)
+set_theme_sound   → definir ou remover um som de tema em um Control: pressed_sound, hover_sound, focus_sound, … (Godot 4.8+)
 ```
 
 ### 8. TileMap
@@ -217,6 +219,7 @@ analyze_signal_flow        → visualizar conexões de signals
 detect_circular_dependencies → encontrar referências circulares de script/cena
 find_unused_resources      → limpar arquivos não utilizados
 get_performance_monitors   → FPS, memória, draw calls, estatísticas de física
+show_editor_dock           → trazer para a frente um dock ou uma tela principal do editor (2D, 3D, Script, Output, …); sem nome, lista os disponíveis (docks que não são telas principais exigem Godot 4.6+)
 ```
 
 ## Testes e QA

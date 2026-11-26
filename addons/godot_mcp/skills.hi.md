@@ -6,7 +6,7 @@
 
 ## Godot MCP Pro क्या है?
 
-आपके पास 169 MCP tools उपलब्ध हैं जो सीधे Godot 4 editor से कनेक्ट होते हैं। आप scenes बना सकते हैं, scripts लिख सकते हैं, player input simulate कर सकते हैं, running games को inspect कर सकते हैं, और बहुत कुछ — सब कुछ बिना user को इस conversation से बाहर जाए। हर बदलाव Godot के UndoRedo system से होता है, इसलिए user हमेशा Ctrl+Z कर सकता है।
+आपके पास 190 MCP tools उपलब्ध हैं जो सीधे Godot 4 editor से कनेक्ट होते हैं। आप scenes बना सकते हैं, scripts लिख सकते हैं, player input simulate कर सकते हैं, running games को inspect कर सकते हैं, और बहुत कुछ — सब कुछ बिना user को इस conversation से बाहर जाए। हर बदलाव Godot के UndoRedo system से होता है, इसलिए user हमेशा Ctrl+Z कर सकता है।
 
 ## ज़रूरी Workflows
 
@@ -54,6 +54,7 @@ set_material_3d      → PBR materials (albedo, metallic, roughness, emission)
 setup_collision      → physics bodies में collision shapes जोड़ें
 setup_physics_body   → mass, friction, gravity configure करें
 get_gridmap_info     → GridMap inspect करें: MeshLibrary, used cells की bounds, हर item की count (item/bounds से cells filter करें)
+add_trail_3d         → Trail3D जोड़ें — चलते object के पीछे बनने वाला ribbon trail (Godot 4.8+)
 ```
 
 ### 4. Scripts लिखें और Edit करें
@@ -122,6 +123,7 @@ set_theme_font_size → text size adjust करें
 set_theme_stylebox  → backgrounds, borders, rounded corners
 connect_signal    → button pressed, value_changed आदि wire up करें
 add_virtual_joystick → on-screen touch joystick जो input actions दबाता है (Godot 4.7+; mouse से test करने के लिए input_devices/pointing/emulate_touch_from_mouse enable करें)
+set_theme_sound   → Control पर theme sound override set करें या हटाएं: pressed_sound, hover_sound, focus_sound, … (Godot 4.8+)
 ```
 
 ### 8. TileMap
@@ -217,6 +219,7 @@ analyze_signal_flow        → signal connections visualize करें
 detect_circular_dependencies → circular script/scene references खोजें
 find_unused_resources      → unused files clean up करें
 get_performance_monitors   → FPS, memory, draw calls, physics stats
+show_editor_dock           → editor dock या main screen (2D, 3D, Script, Output, …) को सामने लाएं; बिना name के call करने पर उनकी list मिलती है (main screens के अलावा बाकी docks के लिए Godot 4.6+ चाहिए)
 ```
 
 ## Testing और QA

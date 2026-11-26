@@ -2,7 +2,7 @@
 
 # Godot MCP Pro
 
-AI駆動のGodotゲーム開発のためのプレミアムMCP（Model Context Protocol）サーバー。ClaudeなどのAIアシスタントをGodotエディタに直接接続し、**187の強力なツール**を提供します。
+AI駆動のGodotゲーム開発のためのプレミアムMCP（Model Context Protocol）サーバー。ClaudeなどのAIアシスタントをGodotエディタに直接接続し、**190の強力なツール**を提供します。
 
 ## アーキテクチャ
 
@@ -65,12 +65,12 @@ Godot MCP Proは、各クライアントのツール数上限に合わせて4つ
 
 | モード | ツール数 | 最適な用途 |
 |------|-------|----------|
-| **Full**（デフォルト） | 187 | Claude Code, Cline, VS Code Copilot, Cursor |
+| **Full**（デフォルト） | 190 | Claude Code, Cline, VS Code Copilot, Cursor |
 | **3D** (`--3d`) | 100 | 3Dが必要なAntigravityなど、ツール上限100のクライアント |
 | **Lite** (`--lite`) | 88 | Windsurf, JetBrains Junie, Gemini CLI |
 | **Minimal** (`--minimal`) | 35 | OpenCode、コンテキストの小さいローカルLLM |
 
-`--3d`はコアツールに加えて物理、AnimationTree、ナビゲーションを含みますが、100ツールの上限に収めるため`uid_to_project_path`、`project_path_to_uid`、`compare_screenshots`、`clear_output`、`close_script`、`reload_open_scripts`、`set_anchor_preset`、`click_button_by_text`を除外しています。
+`--3d`はコアツールに加えて物理、AnimationTree、ナビゲーションを含みますが、100ツールの上限に収めるため`uid_to_project_path`、`project_path_to_uid`、`compare_screenshots`、`clear_output`、`close_script`、`reload_open_scripts`、`set_anchor_preset`、`click_button_by_text`、`show_editor_dock`を除外しています。
 
 ```json
 {
@@ -137,14 +137,14 @@ CLIはWebSocket経由でGodotエディタプラグインに直接接続します
 
 プラグインを有効にした状態でGodotプロジェクトを開き、Claude Codeを使ってエディタを操作します。
 
-## 全187ツール
+## 全190ツール
 
 ### プロジェクトツール (10)
 | ツール | 説明 |
 |------|-------------|
 | `get_project_info` | プロジェクトのメタデータ、バージョン、ビューポート、オートロード |
 | `get_filesystem_tree` | フィルタリング付き再帰的ファイルツリー |
-| `search_files` | ファジー/globファイル検索 |
+| `search_files` | ファジー/globファイル検索（Godot 4.8+では`fuzzy`指定時にエンジンのFuzzySearchでランキング） |
 | `search_in_files` | プロジェクトファイル内のコンテンツ検索 |
 | `get_project_settings` | project.godotの設定を読み取り |
 | `set_project_setting` | エディタAPI経由でプロジェクト設定を変更 |
@@ -201,7 +201,7 @@ CLIはWebSocket経由でGodotエディタプラグインに直接接続します
 | `reload_open_scripts` | 開いているスクリプトをディスクから再読み込み。未保存のバッファは保持（Godot 4.7+） |
 | `get_open_scripts` | エディタで開いているスクリプトを一覧表示 |
 
-### エディタツール (15)
+### エディタツール (16)
 | ツール | 説明 |
 |------|-------------|
 | `get_editor_errors` | エラーとスタックトレースを取得 |
@@ -219,6 +219,7 @@ CLIはWebSocket経由でGodotエディタプラグインに直接接続します
 | `set_editor_camera` | 3Dエディタカメラを移動してビューを構図決め |
 | `get_unsaved_state` | 未保存の変更があるシーン/スクリプトを報告（未保存リストはGodot 4.7+が必要） |
 | `save_all` | 開いている全シーンと変更済みスクリプトバッファを保存し、保存内容を報告（スクリプトはGodot 4.7+が必要） |
+| `show_editor_dock` | エディタのドックまたはメイン画面を前面に表示（2D、3D、Script、Game、FileSystem、Inspector、Output など）。名前を指定せずに呼び出すと一覧を返す（メイン画面以外のドックはGodot 4.6+が必要） |
 
 ### 入力ツール (5)
 | ツール | 説明 |
@@ -264,7 +265,7 @@ CLIはWebSocket経由でGodotエディタプラグインに直接接続します
 |------|-------------|
 | `list_animations` | AnimationPlayer内の全アニメーションを一覧表示 |
 | `create_animation` | 新規アニメーションを作成 |
-| `add_animation_track` | トラックを追加（value/position/rotation/method/bezier） |
+| `add_animation_track` | トラックを追加（value/position/rotation/method/bezier）、補間モードを指定可能（makimaはGodot 4.8+） |
 | `set_animation_keyframe` | トラックにキーフレームを挿入 |
 | `get_animation_info` | 全トラック/キーを含むアニメーションの詳細情報 |
 | `remove_animation` | アニメーションを削除 |
@@ -279,7 +280,7 @@ CLIはWebSocket経由でGodotエディタプラグインに直接接続します
 | `tilemap_get_info` | TileMapLayerの情報とタイルセットのソース |
 | `tilemap_get_used_cells` | 使用中セルの一覧 |
 
-### テーマ & UIツール (8)
+### テーマ & UIツール (9)
 | ツール | 説明 |
 |------|-------------|
 | `create_theme` | Themeリソースファイルを作成 |
@@ -287,9 +288,10 @@ CLIはWebSocket経由でGodotエディタプラグインに直接接続します
 | `set_theme_constant` | テーマ定数のオーバーライドを設定 |
 | `set_theme_font_size` | テーマのフォントサイズのオーバーライドを設定 |
 | `set_theme_stylebox` | StyleBoxFlatのオーバーライドを設定 |
-| `setup_control` | Control/Containerのレイアウトを1回の呼び出しで設定 |
+| `setup_control` | Control/Containerのレイアウトを1回の呼び出しで設定（Godot 4.8+では`fit_text`でフォントサイズを自動調整） |
 | `add_virtual_joystick` | 入力アクションに紐づくオンスクリーンVirtualJoystickを追加（Godot 4.7+） |
-| `get_theme_info` | テーマのオーバーライド情報を取得 |
+| `set_theme_sound` | Controlのテーマサウンドオーバーライドを設定/削除（pressed_sound、hover_sound、focus_sound など）（Godot 4.8+） |
+| `get_theme_info` | テーマのオーバーライド情報を取得（Godot 4.8+ではサウンドオーバーライドも） |
 
 ### プロファイリングツール (2)
 | ツール | 説明 |
@@ -344,22 +346,23 @@ CLIはWebSocket経由でGodotエディタプラグインに直接接続します
 | `setup_physics_body` | 物理ボディのプロパティを設定 |
 | `get_collision_info` | コリジョンシェイプの詳細を取得 |
 
-### 3Dシーンツール (7)
+### 3Dシーンツール (8)
 | ツール | 説明 |
 |------|-------------|
 | `add_mesh_instance` | プリミティブメッシュ付きMeshInstance3Dを追加 |
-| `setup_lighting` | ライトノードを追加/設定 |
+| `setup_lighting` | ライトノードを追加/設定（Godot 4.8+ではコンタクトシャドウに対応） |
 | `set_material_3d` | StandardMaterial3Dのプロパティを設定 |
 | `setup_environment` | WorldEnvironmentを設定 |
 | `setup_camera_3d` | Camera3Dのプロパティを設定 |
 | `add_gridmap` | GridMapノードをセットアップ |
 | `get_gridmap_info` | GridMapを検査: MeshLibrary、範囲、アイテムごとの数、フィルタ済みセル（4.7+ではオクタントのサマリーも） |
+| `add_trail_3d` | 移動するオブジェクトの後ろに描画されるTrail3Dリボンを追加（Godot 4.8+） |
 
 ### パーティクルツール (5)
 | ツール | 説明 |
 |------|-------------|
 | `create_particles` | GPUParticles2D/3Dを作成 |
-| `set_particle_material` | ParticleProcessMaterialを設定 |
+| `set_particle_material` | ParticleProcessMaterialを設定（`preserve_color`はGodot 4.8+） |
 | `set_particle_color_gradient` | パーティクルのカラーグラデーションを設定 |
 | `apply_particle_preset` | プリセットを適用（fire、smoke、sparksなど） |
 | `get_particle_info` | パーティクルシステムの詳細を取得 |
@@ -448,19 +451,19 @@ CLIはWebSocket経由でGodotエディタプラグインに直接接続します
 | シーン | 10 | 8 | 11 | 9 | 3 | 4 | 5 |
 | ノード | **17** | 8 | 0 | 8 | 2 | 3 | 0 |
 | スクリプト | **9** | 5 | 6 | 4 | 0 | 5 | 0 |
-| エディタ | **15** | 5 | 1 | 5 | 1 | 3 | 2 |
+| エディタ | **16** | 5 | 1 | 5 | 1 | 3 | 2 |
 | 入力 | **7** | 2 | 0 | 0 | 0 | 0 | 0 |
 | ランタイム | **20** | 0 | 0 | 0 | 0 | 0 | 0 |
 | アニメーション | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | TileMap | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| テーマ/UI | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
+| テーマ/UI | **9** | 0 | 0 | 0 | 0 | 0 | 0 |
 | プロファイリング | **2** | 0 | 0 | 0 | 0 | 0 | 0 |
 | バッチ/リファクタ | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
 | シェーダー | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | エクスポート | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | リソース | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | 物理 | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| 3Dシーン | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
+| 3Dシーン | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
 | パーティクル | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
 | ナビゲーション | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
 | オーディオ | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -472,7 +475,7 @@ CLIはWebSocket経由でGodotエディタプラグインに直接接続します
 | その他 | 0 | 0 | 9 | 5 | 5 | 2 | 1 |
 | ヘッドレス | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Androidデプロイ | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
-| **合計** | **187** | ~30 | **32** | **39** | **13** | **19** | **10** |
+| **合計** | **190** | ~30 | **32** | **39** | **13** | **19** | **10** |
 
 ### 機能マトリクス
 
@@ -497,13 +500,13 @@ CLIはWebSocket経由でGodotエディタプラグインに直接接続します
 |----------|-------|----------------|
 | **アニメーション** | 6ツール | アニメーション作成、トラック追加、キーフレーム設定 — すべてプログラムで |
 | **TileMap** | 6ツール | セル設定、矩形塗りつぶし、タイルデータ取得 — 2Dレベルデザインに必須 |
-| **テーマ/UI** | 8ツール | StyleBox、カラー、フォント — 手作業のエディタ操作なしでUIテーマを構築 |
+| **テーマ/UI** | 9ツール | StyleBox、カラー、フォント — 手作業のエディタ操作なしでUIテーマを構築 |
 | **プロファイリング** | 2ツール | FPS、メモリ、ドローコール、物理 — パフォーマンス監視 |
 | **バッチ/リファクタ** | 7ツール | 型による検索、プロパティの一括変更、シーン横断の更新、依存関係分析 |
 | **シェーダー** | 6ツール | シェーダーの作成/編集、マテリアル割り当て、パラメータ設定 |
 | **エクスポート** | 4ツール | プリセット一覧、エクスポートコマンド取得、テンプレート確認 |
 | **物理** | 6ツール | コリジョンシェイプ、ボディ、レイキャストのセットアップとレイヤー管理 |
-| **3Dシーン** | 7ツール | メッシュ、カメラ、ライト、環境の追加、GridMap対応 |
+| **3Dシーン** | 8ツール | メッシュ、カメラ、ライト、環境の追加、GridMap対応 |
 | **パーティクル** | 5ツール | カスタムマテリアル、プリセット、グラデーションでパーティクルを作成 |
 | **ナビゲーション** | 5ツール | ナビゲーションリージョン、エージェント、経路探索、ベイクを設定 |
 | **オーディオ** | 6ツール | 完全なオーディオバスシステム、エフェクト、プレイヤー、ライブ管理 |

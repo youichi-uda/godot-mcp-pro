@@ -2,7 +2,7 @@
 
 # Godot MCP Pro
 
-用于 AI 驱动 Godot 游戏开发的高级 MCP（Model Context Protocol）服务器。将 Claude 等 AI 助手直接连接到你的 Godot 编辑器，提供 **187 个强大工具**。
+用于 AI 驱动 Godot 游戏开发的高级 MCP（Model Context Protocol）服务器。将 Claude 等 AI 助手直接连接到你的 Godot 编辑器，提供 **190 个强大工具**。
 
 ## 架构
 
@@ -65,12 +65,12 @@ Godot MCP Pro 提供四种模式，以适应各客户端的工具数量限制：
 
 | 模式 | 工具数 | 最适合 |
 |------|-------|----------|
-| **Full**（默认） | 187 | Claude Code, Cline, VS Code Copilot, Cursor |
+| **Full**（默认） | 190 | Claude Code, Cline, VS Code Copilot, Cursor |
 | **3D** (`--3d`) | 100 | Antigravity 及其他需要 3D 功能的 100 工具上限客户端 |
 | **Lite** (`--lite`) | 88 | Windsurf, JetBrains Junie, Gemini CLI |
 | **Minimal** (`--minimal`) | 35 | OpenCode、上下文较小的本地 LLM |
 
-`--3d` 包含核心工具以及物理、AnimationTree 和导航工具，但省略了 `uid_to_project_path`、`project_path_to_uid`、`compare_screenshots`、`clear_output`、`close_script`、`reload_open_scripts`、`set_anchor_preset` 和 `click_button_by_text`，以保持在 100 个工具的上限内。
+`--3d` 包含核心工具以及物理、AnimationTree 和导航工具，但省略了 `uid_to_project_path`、`project_path_to_uid`、`compare_screenshots`、`clear_output`、`close_script`、`reload_open_scripts`、`set_anchor_preset`、`click_button_by_text` 和 `show_editor_dock`，以保持在 100 个工具的上限内。
 
 ```json
 {
@@ -137,14 +137,14 @@ CLI 通过 WebSocket 直接连接到 Godot 编辑器插件。需要：
 
 在启用插件的状态下打开你的 Godot 项目，然后使用 Claude Code 与编辑器交互。
 
-## 全部 187 个工具
+## 全部 190 个工具
 
 ### 项目工具 (10)
 | 工具 | 描述 |
 |------|-------------|
 | `get_project_info` | 项目元数据、版本、视口、自动加载 |
 | `get_filesystem_tree` | 带过滤的递归文件树 |
-| `search_files` | 模糊/glob 文件搜索 |
+| `search_files` | 模糊/glob 文件搜索（Godot 4.8+ 上使用 `fuzzy` 时采用引擎 FuzzySearch 排序） |
 | `search_in_files` | 在项目文件中搜索内容 |
 | `get_project_settings` | 读取 project.godot 设置 |
 | `set_project_setting` | 通过编辑器 API 设置项目设置 |
@@ -201,7 +201,7 @@ CLI 通过 WebSocket 直接连接到 Godot 编辑器插件。需要：
 | `reload_open_scripts` | 从磁盘重新加载已打开的脚本，保留未保存的缓冲区（Godot 4.7+） |
 | `get_open_scripts` | 列出编辑器中已打开的脚本 |
 
-### 编辑器工具 (15)
+### 编辑器工具 (16)
 | 工具 | 描述 |
 |------|-------------|
 | `get_editor_errors` | 获取错误和堆栈跟踪 |
@@ -219,6 +219,7 @@ CLI 通过 WebSocket 直接连接到 Godot 编辑器插件。需要：
 | `set_editor_camera` | 移动 3D 编辑器相机以框选视图 |
 | `get_unsaved_state` | 报告有未保存更改的已打开场景/脚本（未保存列表需要 Godot 4.7+） |
 | `save_all` | 保存所有已打开的场景和已修改的脚本缓冲区，并报告保存内容（脚本需要 Godot 4.7+） |
+| `show_editor_dock` | 将编辑器停靠面板或主屏幕切换到前台（2D、3D、Script、Game、FileSystem、Inspector、Output 等），不带名称调用时列出它们（主屏幕以外的停靠面板需要 Godot 4.6+） |
 
 ### 输入工具 (5)
 | 工具 | 描述 |
@@ -264,7 +265,7 @@ CLI 通过 WebSocket 直接连接到 Godot 编辑器插件。需要：
 |------|-------------|
 | `list_animations` | 列出 AnimationPlayer 中的所有动画 |
 | `create_animation` | 创建新动画 |
-| `add_animation_track` | 添加轨道（value/position/rotation/method/bezier） |
+| `add_animation_track` | 添加轨道（value/position/rotation/method/bezier），可指定插值模式（makima 需要 Godot 4.8+） |
 | `set_animation_keyframe` | 向轨道插入关键帧 |
 | `get_animation_info` | 包含所有轨道/关键帧的详细动画信息 |
 | `remove_animation` | 移除动画 |
@@ -279,7 +280,7 @@ CLI 通过 WebSocket 直接连接到 Godot 编辑器插件。需要：
 | `tilemap_get_info` | TileMapLayer 信息和 tile set 源 |
 | `tilemap_get_used_cells` | 已使用单元格列表 |
 
-### 主题 & UI 工具 (8)
+### 主题 & UI 工具 (9)
 | 工具 | 描述 |
 |------|-------------|
 | `create_theme` | 创建 Theme 资源文件 |
@@ -287,9 +288,10 @@ CLI 通过 WebSocket 直接连接到 Godot 编辑器插件。需要：
 | `set_theme_constant` | 设置主题常量覆盖 |
 | `set_theme_font_size` | 设置主题字体大小覆盖 |
 | `set_theme_stylebox` | 设置 StyleBoxFlat 覆盖 |
-| `setup_control` | 一次调用配置 Control/Container 布局 |
+| `setup_control` | 一次调用配置 Control/Container 布局（Godot 4.8+ 支持 `fit_text` 字体自适应缩放） |
 | `add_virtual_joystick` | 添加绑定到输入动作的屏幕 VirtualJoystick（Godot 4.7+） |
-| `get_theme_info` | 获取主题覆盖信息 |
+| `set_theme_sound` | 设置或移除 Control 上的主题音效覆盖（pressed_sound、hover_sound、focus_sound 等）（Godot 4.8+） |
+| `get_theme_info` | 获取主题覆盖信息（Godot 4.8+ 包含音效覆盖） |
 
 ### 性能分析工具 (2)
 | 工具 | 描述 |
@@ -344,22 +346,23 @@ CLI 通过 WebSocket 直接连接到 Godot 编辑器插件。需要：
 | `setup_physics_body` | 配置物理体属性 |
 | `get_collision_info` | 获取碰撞形状详情 |
 
-### 3D 场景工具 (7)
+### 3D 场景工具 (8)
 | 工具 | 描述 |
 |------|-------------|
 | `add_mesh_instance` | 添加带基本网格的 MeshInstance3D |
-| `setup_lighting` | 添加/配置灯光节点 |
+| `setup_lighting` | 添加/配置灯光节点（Godot 4.8+ 支持接触阴影） |
 | `set_material_3d` | 设置 StandardMaterial3D 属性 |
 | `setup_environment` | 配置 WorldEnvironment |
 | `setup_camera_3d` | 配置 Camera3D 属性 |
 | `add_gridmap` | 设置 GridMap 节点 |
 | `get_gridmap_info` | 检查 GridMap：MeshLibrary、边界、各项计数、过滤后的单元格（4.7+ 提供 octant 摘要） |
+| `add_trail_3d` | 添加在移动物体后方绘制的 Trail3D 拖尾带（Godot 4.8+） |
 
 ### 粒子工具 (5)
 | 工具 | 描述 |
 |------|-------------|
 | `create_particles` | 创建 GPUParticles2D/3D |
-| `set_particle_material` | 配置 ParticleProcessMaterial |
+| `set_particle_material` | 配置 ParticleProcessMaterial（Godot 4.8+ 支持 `preserve_color`） |
 | `set_particle_color_gradient` | 设置粒子颜色渐变 |
 | `apply_particle_preset` | 应用预设（火焰、烟雾、火花等） |
 | `get_particle_info` | 获取粒子系统详情 |
@@ -448,19 +451,19 @@ CLI 通过 WebSocket 直接连接到 Godot 编辑器插件。需要：
 | 场景 | 10 | 8 | 11 | 9 | 3 | 4 | 5 |
 | 节点 | **17** | 8 | 0 | 8 | 2 | 3 | 0 |
 | 脚本 | **9** | 5 | 6 | 4 | 0 | 5 | 0 |
-| 编辑器 | **15** | 5 | 1 | 5 | 1 | 3 | 2 |
+| 编辑器 | **16** | 5 | 1 | 5 | 1 | 3 | 2 |
 | 输入 | **7** | 2 | 0 | 0 | 0 | 0 | 0 |
 | 运行时 | **20** | 0 | 0 | 0 | 0 | 0 | 0 |
 | 动画 | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | TileMap | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| 主题/UI | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
+| 主题/UI | **9** | 0 | 0 | 0 | 0 | 0 | 0 |
 | 性能分析 | **2** | 0 | 0 | 0 | 0 | 0 | 0 |
 | 批量/重构 | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
 | 着色器 | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | 导出 | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | 资源 | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | 物理 | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| 3D 场景 | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
+| 3D 场景 | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
 | 粒子 | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
 | 导航 | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
 | 音频 | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -472,7 +475,7 @@ CLI 通过 WebSocket 直接连接到 Godot 编辑器插件。需要：
 | 其他 | 0 | 0 | 9 | 5 | 5 | 2 | 1 |
 | Headless | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Android 部署 | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
-| **合计** | **187** | ~30 | **32** | **39** | **13** | **19** | **10** |
+| **合计** | **190** | ~30 | **32** | **39** | **13** | **19** | **10** |
 
 ### 功能矩阵
 
@@ -497,13 +500,13 @@ CLI 通过 WebSocket 直接连接到 Godot 编辑器插件。需要：
 |----------|-------|----------------|
 | **动画** | 6 个工具 | 创建动画、添加轨道、设置关键帧 — 全部可编程完成 |
 | **TileMap** | 6 个工具 | 设置单元格、填充矩形、查询图块数据 — 2D 关卡设计必备 |
-| **主题/UI** | 8 个工具 | StyleBox、颜色、字体 — 无需手动编辑器操作即可构建 UI 主题 |
+| **主题/UI** | 9 个工具 | StyleBox、颜色、字体 — 无需手动编辑器操作即可构建 UI 主题 |
 | **性能分析** | 2 个工具 | FPS、内存、绘制调用、物理 — 性能监控 |
 | **批量/重构** | 7 个工具 | 按类型查找、批量修改属性、跨场景更新、依赖分析 |
 | **着色器** | 6 个工具 | 创建/编辑着色器、分配材质、设置参数 |
 | **导出** | 4 个工具 | 列出预设、获取导出命令、检查模板 |
 | **物理** | 6 个工具 | 设置碰撞形状、物理体、射线检测和层管理 |
-| **3D 场景** | 7 个工具 | 添加网格、相机、灯光、环境，支持 GridMap |
+| **3D 场景** | 8 个工具 | 添加网格、相机、灯光、环境，支持 GridMap |
 | **粒子** | 5 个工具 | 使用自定义材质、预设和渐变创建粒子 |
 | **导航** | 5 个工具 | 配置导航区域、代理、寻路、烘焙 |
 | **音频** | 6 个工具 | 完整的音频总线系统、效果、播放器、实时管理 |

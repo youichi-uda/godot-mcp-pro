@@ -19,6 +19,7 @@ func get_commands() -> Dictionary:
 		"set_editor_camera": _set_editor_camera,
 		"get_unsaved_state": _get_unsaved_state,
 		"save_all": _save_all,
+		"show_editor_dock": _show_editor_dock,
 	}
 
 
@@ -476,6 +477,11 @@ func _reload_plugin(params: Dictionary) -> Dictionary:
 func _deferred_reload_plugin(ei: EditorInterface, plugin_name: String) -> void:
 	ei.set_plugin_enabled(plugin_name, false)
 	ei.set_plugin_enabled(plugin_name, true)
+	# Godot writes project.godot at once when a plugin is disabled but only
+	# after a delay when it is enabled, so for a second or more (longer in a
+	# busy editor) the file on disk says this plugin is off. An editor crash in
+	# that window would leave it disabled. Write the enabled state now.
+	ProjectSettings.save()
 	print("[MCP] Plugin reloaded")
 
 
@@ -1116,3 +1122,96 @@ func _set_auto_dismiss(params: Dictionary) -> Dictionary:
 		"auto_dismiss": enabled,
 		"message": "Auto-dismiss dialogs %s" % ("enabled" if enabled else "disabled"),
 	})
+
+
+## Main screens that EditorInterface.set_main_screen_editor() accepts on every
+## Godot 4 version. From 4.8 they are EditorDocks too and are found in the tree.
+const _MAIN_SCREEN_NAMES := ["2D", "3D", "Script", "Game", "AssetLib"]
+
+
+## Every EditorDock in the editor UI (Godot 4.6+), keyed by node name - the
+## name EditorInterface.get_dock_by_name() uses on 4.8. Empty on 4.5, where
+## the class does not exist.
+func _collect_editor_docks() -> Dictionary:
+	var docks := {}
+	if not ClassDB.class_exists("EditorDock"):
+		return docks
+	var stack: Array = [get_editor().get_base_control()]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node.is_class("EditorDock"):
+			docks[str(node.name)] = node
+		for child in node.get_children():
+			stack.append(child)
+	return docks
+
+
+## show_editor_dock: brings an editor dock or main screen to the front (2D, 3D,
+## Script, Game, FileSystem, Inspector, Output, Animation, ...), e.g. before
+## get_editor_screenshot. Without 'name' it lists what can be shown.
+## Docks need Godot 4.6+; the main screens work on every version through
+## set_main_screen_editor() and are ordinary docks from 4.8.
+func _show_editor_dock(params: Dictionary) -> Dictionary:
+	var docks := _collect_editor_docks()
+	var names: Array = docks.keys()
+	for screen: String in _MAIN_SCREEN_NAMES:
+		if not names.has(screen) and not (screen == "AssetLib" and names.has("Asset Store")):
+			names.append(screen)
+	names.sort()
+
+	var requested: String = optional_string(params, "name", "")
+	if requested.is_empty():
+		var listing: Array = []
+		for dock_name: String in names:
+			var entry := {"name": dock_name}
+			if docks.has(dock_name):
+				entry["visible"] = (docks[dock_name] as Control).is_visible_in_tree()
+				if _is_main_screen_dock(docks[dock_name]):
+					entry["main_screen"] = true
+				var title: Variant = (docks[dock_name] as Object).get("title")
+				if title is String and not (title as String).is_empty() and title != dock_name:
+					entry["title"] = title
+			else:
+				entry["main_screen"] = true
+			listing.append(entry)
+		return success({"docks": listing, "count": listing.size(), "godot_version": get_godot_version_string()})
+
+	# Exact name first, then case-insensitive.
+	var resolved := ""
+	for dock_name: String in names:
+		if dock_name == requested:
+			resolved = dock_name
+			break
+	if resolved.is_empty():
+		for dock_name: String in names:
+			if dock_name.to_lower() == requested.to_lower():
+				resolved = dock_name
+				break
+	# The asset library screen is "AssetLib" up to 4.7 and "Asset Store" from 4.8.
+	if resolved.is_empty():
+		var squashed := requested.to_lower().replace(" ", "")
+		if squashed == "assetlib" or squashed == "assetstore" or squashed == "assetlibrary":
+			for candidate: String in ["Asset Store", "AssetLib"]:
+				if names.has(candidate):
+					resolved = candidate
+					break
+	if resolved.is_empty():
+		return error_not_found("Editor dock '%s'" % requested, "Available: %s" % ", ".join(names))
+
+	# Main screens switch through set_main_screen_editor() on every version:
+	# on 4.8, where they are docks, make_visible() does not bring them forward
+	# (measured on 4.8 beta 5).
+	if docks.has(resolved) and not _is_main_screen_dock(docks[resolved]):
+		var dock: Control = docks[resolved]
+		dock.call("make_visible")
+		return success({"name": resolved, "shown": true, "visible": dock.is_visible_in_tree(), "kind": "dock"})
+	get_editor().set_main_screen_editor(resolved)
+	var out := {"name": resolved, "shown": true, "kind": "main_screen"}
+	if docks.has(resolved):
+		out["visible"] = (docks[resolved] as Control).is_visible_in_tree()
+	return success(out)
+
+
+func _is_main_screen_dock(dock: Node) -> bool:
+	var parent := dock.get_parent()
+	return parent != null and parent.is_class("EditorMainScreen")

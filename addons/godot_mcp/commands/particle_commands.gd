@@ -260,6 +260,18 @@ func _set_particle_material(params: Dictionary) -> Dictionary:
 	if not err_47.is_empty():
 		return err_47
 
+	# Godot 4.8+: keep the colour passed to a manual emission
+	# (GPUParticles3D.emit_particle) or handed down by a sub-emitter.
+	if params.has("preserve_color"):
+		if not _material_has_property(mat, "particle_flag_preserve_color"):
+			var running_48: String = Engine.get_version_info().get("string", "unknown")
+			return error(-32601, "preserve_color requires Godot 4.8+ (running %s)" % running_48, {
+				"required_version": "4.8",
+				"running_version": running_48,
+			})
+		mat.set("particle_flag_preserve_color", optional_bool(params, "preserve_color"))
+		changes.append("preserve_color")
+
 	if not changes.is_empty():
 		set_property_with_undo(node, "process_material", mat, "MCP: Set particle material")
 	return success({"node_path": node_path, "changes": changes})

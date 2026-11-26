@@ -2,7 +2,7 @@
 
 # Godot MCP Pro
 
-Servidor MCP (Model Context Protocol) premium para desenvolvimento de jogos Godot com IA. Conecta assistentes de IA como o Claude diretamente ao seu editor Godot com **187 ferramentas poderosas**.
+Servidor MCP (Model Context Protocol) premium para desenvolvimento de jogos Godot com IA. Conecta assistentes de IA como o Claude diretamente ao seu editor Godot com **190 ferramentas poderosas**.
 
 ## Arquitetura
 
@@ -65,12 +65,12 @@ O Godot MCP Pro oferece quatro modos para se adequar ao limite de ferramentas de
 
 | Modo | Ferramentas | Ideal para |
 |------|-------|----------|
-| **Full** (padrão) | 187 | Claude Code, Cline, VS Code Copilot, Cursor |
+| **Full** (padrão) | 190 | Claude Code, Cline, VS Code Copilot, Cursor |
 | **3D** (`--3d`) | 100 | Antigravity e outros clientes com limite de 100 ferramentas que precisam de 3D |
 | **Lite** (`--lite`) | 88 | Windsurf, JetBrains Junie, Gemini CLI |
 | **Minimal** (`--minimal`) | 35 | OpenCode, LLMs locais com contexto pequeno |
 
-`--3d` inclui as ferramentas principais mais física, AnimationTree e navegação, mas omite `uid_to_project_path`, `project_path_to_uid`, `compare_screenshots`, `clear_output`, `close_script`, `reload_open_scripts`, `set_anchor_preset` e `click_button_by_text` para ficar dentro do limite de 100 ferramentas.
+`--3d` inclui as ferramentas principais mais física, AnimationTree e navegação, mas omite `uid_to_project_path`, `project_path_to_uid`, `compare_screenshots`, `clear_output`, `close_script`, `reload_open_scripts`, `set_anchor_preset`, `click_button_by_text` e `show_editor_dock` para ficar dentro do limite de 100 ferramentas.
 
 ```json
 {
@@ -137,14 +137,14 @@ A CLI se conecta diretamente ao plugin do editor Godot via WebSocket. Ela exige:
 
 Abra seu projeto Godot com o plugin ativado e use o Claude Code para interagir com o editor.
 
-## Todas as 187 ferramentas
+## Todas as 190 ferramentas
 
 ### Ferramentas de projeto (10)
 | Ferramenta | Descrição |
 |------|-------------|
 | `get_project_info` | Metadados do projeto, versão, viewport, autoloads |
 | `get_filesystem_tree` | Árvore de arquivos recursiva com filtragem |
-| `search_files` | Busca de arquivos fuzzy/glob |
+| `search_files` | Busca de arquivos fuzzy/glob (ranqueamento pelo FuzzySearch da engine com `fuzzy` no Godot 4.8+) |
 | `search_in_files` | Buscar conteúdo nos arquivos do projeto |
 | `get_project_settings` | Ler configurações do project.godot |
 | `set_project_setting` | Definir configurações do projeto via API do editor |
@@ -201,7 +201,7 @@ Abra seu projeto Godot com o plugin ativado e use o Claude Code para interagir c
 | `reload_open_scripts` | Recarregar do disco os scripts abertos, mantendo os buffers não salvos (Godot 4.7+) |
 | `get_open_scripts` | Listar scripts abertos no editor |
 
-### Ferramentas do editor (15)
+### Ferramentas do editor (16)
 | Ferramenta | Descrição |
 |------|-------------|
 | `get_editor_errors` | Obter erros e stack traces |
@@ -219,6 +219,7 @@ Abra seu projeto Godot com o plugin ativado e use o Claude Code para interagir c
 | `set_editor_camera` | Mover a câmera do editor 3D para enquadrar uma vista |
 | `get_unsaved_state` | Informar cenas/scripts abertos com alterações não salvas (as listas de não salvos exigem Godot 4.7+) |
 | `save_all` | Salvar todas as cenas abertas e os buffers de scripts modificados, informando o que foi salvo (scripts exigem Godot 4.7+) |
+| `show_editor_dock` | Trazer para a frente um dock do editor ou uma tela principal (2D, 3D, Script, Game, FileSystem, Inspector, Output, ...), ou listá-los quando chamada sem nome (docks que não são telas principais exigem Godot 4.6+) |
 
 ### Ferramentas de entrada (5)
 | Ferramenta | Descrição |
@@ -264,7 +265,7 @@ Abra seu projeto Godot com o plugin ativado e use o Claude Code para interagir c
 |------|-------------|
 | `list_animations` | Listar todas as animações de um AnimationPlayer |
 | `create_animation` | Criar nova animação |
-| `add_animation_track` | Adicionar trilha (value/position/rotation/method/bezier) |
+| `add_animation_track` | Adicionar trilha (value/position/rotation/method/bezier) com um modo de interpolação (makima no Godot 4.8+) |
 | `set_animation_keyframe` | Inserir keyframe em uma trilha |
 | `get_animation_info` | Informações detalhadas da animação com todas as trilhas/chaves |
 | `remove_animation` | Remover uma animação |
@@ -279,7 +280,7 @@ Abra seu projeto Godot com o plugin ativado e use o Claude Code para interagir c
 | `tilemap_get_info` | Informações do TileMapLayer e fontes do tile set |
 | `tilemap_get_used_cells` | Lista de células usadas |
 
-### Ferramentas de tema e UI (8)
+### Ferramentas de tema e UI (9)
 | Ferramenta | Descrição |
 |------|-------------|
 | `create_theme` | Criar arquivo de recurso Theme |
@@ -287,9 +288,10 @@ Abra seu projeto Godot com o plugin ativado e use o Claude Code para interagir c
 | `set_theme_constant` | Definir override de constante do tema |
 | `set_theme_font_size` | Definir override de tamanho de fonte do tema |
 | `set_theme_stylebox` | Definir override de StyleBoxFlat |
-| `setup_control` | Configurar o layout de Control/Container em uma única chamada |
+| `setup_control` | Configurar o layout de Control/Container em uma única chamada (`fit_text` ajusta o tamanho da fonte ao espaço disponível no Godot 4.8+) |
 | `add_virtual_joystick` | Adicionar um VirtualJoystick na tela vinculado a ações de entrada (Godot 4.7+) |
-| `get_theme_info` | Obter informações de overrides do tema |
+| `set_theme_sound` | Definir ou remover um override de som do tema em um Control (pressed_sound, hover_sound, focus_sound, ...) (Godot 4.8+) |
+| `get_theme_info` | Obter informações de overrides do tema (overrides de som no Godot 4.8+) |
 
 ### Ferramentas de profiling (2)
 | Ferramenta | Descrição |
@@ -344,22 +346,23 @@ Abra seu projeto Godot com o plugin ativado e use o Claude Code para interagir c
 | `setup_physics_body` | Configurar propriedades do corpo físico |
 | `get_collision_info` | Obter detalhes das formas de colisão |
 
-### Ferramentas de cena 3D (7)
+### Ferramentas de cena 3D (8)
 | Ferramenta | Descrição |
 |------|-------------|
 | `add_mesh_instance` | Adicionar MeshInstance3D com malha primitiva |
-| `setup_lighting` | Adicionar/configurar nós de luz |
+| `setup_lighting` | Adicionar/configurar nós de luz (sombras de contato no Godot 4.8+) |
 | `set_material_3d` | Definir propriedades de StandardMaterial3D |
 | `setup_environment` | Configurar WorldEnvironment |
 | `setup_camera_3d` | Configurar propriedades de Camera3D |
 | `add_gridmap` | Configurar nó GridMap |
 | `get_gridmap_info` | Inspecionar um GridMap: MeshLibrary, limites, contagem por item, células filtradas (resumo de octantes no 4.7+) |
+| `add_trail_3d` | Adicionar uma fita Trail3D desenhada atrás de um objeto em movimento (Godot 4.8+) |
 
 ### Ferramentas de partículas (5)
 | Ferramenta | Descrição |
 |------|-------------|
 | `create_particles` | Criar GPUParticles2D/3D |
-| `set_particle_material` | Configurar ParticleProcessMaterial |
+| `set_particle_material` | Configurar ParticleProcessMaterial (`preserve_color` no Godot 4.8+) |
 | `set_particle_color_gradient` | Definir gradiente de cor para partículas |
 | `apply_particle_preset` | Aplicar preset (fire, smoke, sparks, etc.) |
 | `get_particle_info` | Obter detalhes do sistema de partículas |
@@ -448,19 +451,19 @@ Abra seu projeto Godot com o plugin ativado e use o Claude Code para interagir c
 | Cena | 10 | 8 | 11 | 9 | 3 | 4 | 5 |
 | Nós | **17** | 8 | 0 | 8 | 2 | 3 | 0 |
 | Script | **9** | 5 | 6 | 4 | 0 | 5 | 0 |
-| Editor | **15** | 5 | 1 | 5 | 1 | 3 | 2 |
+| Editor | **16** | 5 | 1 | 5 | 1 | 3 | 2 |
 | Entrada | **7** | 2 | 0 | 0 | 0 | 0 | 0 |
 | Runtime | **20** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Animação | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | TileMap | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| Tema/UI | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Tema/UI | **9** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Profiling | **2** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Lote/Refatoração | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Shader | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Exportação | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Recursos | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Física | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| Cena 3D | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Cena 3D | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Partículas | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Navegação | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Áudio | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -472,7 +475,7 @@ Abra seu projeto Godot com o plugin ativado e use o Claude Code para interagir c
 | Outros | 0 | 0 | 9 | 5 | 5 | 2 | 1 |
 | Headless | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Deploy Android | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
-| **Total** | **187** | ~30 | **32** | **39** | **13** | **19** | **10** |
+| **Total** | **190** | ~30 | **32** | **39** | **13** | **19** | **10** |
 
 ### Matriz de recursos
 
@@ -497,13 +500,13 @@ Abra seu projeto Godot com o plugin ativado e use o Claude Code para interagir c
 |----------|-------|----------------|
 | **Animação** | 6 ferramentas | Criar animações, adicionar trilhas, definir keyframes — tudo programaticamente |
 | **TileMap** | 6 ferramentas | Definir células, preencher retângulos, consultar dados de tiles — essencial para level design 2D |
-| **Tema/UI** | 8 ferramentas | StyleBox, cores, fontes — crie temas de UI sem trabalho manual no editor |
+| **Tema/UI** | 9 ferramentas | StyleBox, cores, fontes — crie temas de UI sem trabalho manual no editor |
 | **Profiling** | 2 ferramentas | FPS, memória, draw calls, física — monitoramento de desempenho |
 | **Lote/Refatoração** | 7 ferramentas | Busca por tipo, alterações de propriedades em lote, atualizações entre cenas, análise de dependências |
 | **Shader** | 6 ferramentas | Criar/editar shaders, atribuir materiais, definir parâmetros |
 | **Exportação** | 4 ferramentas | Listar presets, obter comandos de exportação, verificar templates |
 | **Física** | 6 ferramentas | Configurar formas de colisão, corpos, raycasts e gerenciamento de camadas |
-| **Cena 3D** | 7 ferramentas | Adicionar malhas, câmeras, luzes, ambiente, suporte a GridMap |
+| **Cena 3D** | 8 ferramentas | Adicionar malhas, câmeras, luzes, ambiente, suporte a GridMap |
 | **Partículas** | 5 ferramentas | Criar partículas com materiais personalizados, presets e gradientes |
 | **Navegação** | 5 ferramentas | Configurar regiões de navegação, agentes, pathfinding, bake |
 | **Áudio** | 6 ferramentas | Sistema completo de barramentos de áudio, efeitos, players, gerenciamento ao vivo |

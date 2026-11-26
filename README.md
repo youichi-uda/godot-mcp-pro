@@ -1,6 +1,6 @@
 # Godot MCP Pro
 
-Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **187 powerful tools**.
+Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **190 powerful tools**.
 
 ## Architecture
 
@@ -63,12 +63,12 @@ Godot MCP Pro offers four modes to fit any client's tool limit:
 
 | Mode | Tools | Best For |
 |------|-------|----------|
-| **Full** (default) | 187 | Claude Code, Cline, VS Code Copilot, Cursor |
+| **Full** (default) | 190 | Claude Code, Cline, VS Code Copilot, Cursor |
 | **3D** (`--3d`) | 100 | Antigravity and other 100-tool-limit clients needing 3D |
 | **Lite** (`--lite`) | 88 | Windsurf, JetBrains Junie, Gemini CLI |
 | **Minimal** (`--minimal`) | 35 | OpenCode, local LLMs with small context |
 
-`--3d` includes the core tools plus physics, AnimationTree and navigation, but omits `uid_to_project_path`, `project_path_to_uid`, `compare_screenshots`, `clear_output`, `close_script`, `reload_open_scripts`, `set_anchor_preset` and `click_button_by_text` to stay within the 100-tool cap.
+`--3d` includes the core tools plus physics, AnimationTree and navigation, but omits `uid_to_project_path`, `project_path_to_uid`, `compare_screenshots`, `clear_output`, `close_script`, `reload_open_scripts`, `set_anchor_preset`, `click_button_by_text` and `show_editor_dock` to stay within the 100-tool cap.
 
 ```json
 {
@@ -135,14 +135,14 @@ The CLI connects directly to the Godot editor plugin via WebSocket. It requires:
 
 Open your Godot project with the plugin enabled, then use Claude Code to interact with the editor.
 
-## All 187 Tools
+## All 190 Tools
 
 ### Project Tools (10)
 | Tool | Description |
 |------|-------------|
 | `get_project_info` | Project metadata, version, viewport, autoloads |
 | `get_filesystem_tree` | Recursive file tree with filtering |
-| `search_files` | Fuzzy/glob file search |
+| `search_files` | Fuzzy/glob file search (engine FuzzySearch ranking with `fuzzy` on Godot 4.8+) |
 | `search_in_files` | Search content in project files |
 | `get_project_settings` | Read project.godot settings |
 | `set_project_setting` | Set project settings via editor API |
@@ -199,7 +199,7 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `reload_open_scripts` | Reload open scripts from disk, keeping unsaved buffers (Godot 4.7+) |
 | `get_open_scripts` | List scripts open in editor |
 
-### Editor Tools (15)
+### Editor Tools (16)
 | Tool | Description |
 |------|-------------|
 | `get_editor_errors` | Get errors and stack traces |
@@ -217,6 +217,7 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `set_editor_camera` | Move the 3D editor camera to frame a view |
 | `get_unsaved_state` | Report open scenes/scripts with unsaved changes (unsaved lists need Godot 4.7+) |
 | `save_all` | Save all open scenes and modified script buffers, report what was saved (scripts need Godot 4.7+) |
+| `show_editor_dock` | Bring an editor dock or main screen to the front (2D, 3D, Script, Game, FileSystem, Inspector, Output, ...), or list them when called without a name (docks other than main screens need Godot 4.6+) |
 
 ### Input Tools (5)
 | Tool | Description |
@@ -262,7 +263,7 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 |------|-------------|
 | `list_animations` | List all animations in AnimationPlayer |
 | `create_animation` | Create new animation |
-| `add_animation_track` | Add track (value/position/rotation/method/bezier) |
+| `add_animation_track` | Add track (value/position/rotation/method/bezier) with an interpolation mode (makima on Godot 4.8+) |
 | `set_animation_keyframe` | Insert keyframe into track |
 | `get_animation_info` | Detailed animation info with all tracks/keys |
 | `remove_animation` | Remove an animation |
@@ -277,7 +278,7 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `tilemap_get_info` | TileMapLayer info and tile set sources |
 | `tilemap_get_used_cells` | List of used cells |
 
-### Theme & UI Tools (8)
+### Theme & UI Tools (9)
 | Tool | Description |
 |------|-------------|
 | `create_theme` | Create Theme resource file |
@@ -285,9 +286,10 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `set_theme_constant` | Set theme constant override |
 | `set_theme_font_size` | Set theme font size override |
 | `set_theme_stylebox` | Set StyleBoxFlat override |
-| `setup_control` | Configure Control/Container layout in one call |
+| `setup_control` | Configure Control/Container layout in one call (`fit_text` font resize-to-fit on Godot 4.8+) |
 | `add_virtual_joystick` | Add an on-screen VirtualJoystick bound to input actions (Godot 4.7+) |
-| `get_theme_info` | Get theme overrides info |
+| `set_theme_sound` | Set or remove a theme sound override on a Control (pressed_sound, hover_sound, focus_sound, ...) (Godot 4.8+) |
+| `get_theme_info` | Get theme overrides info (sound overrides on Godot 4.8+) |
 
 ### Profiling Tools (2)
 | Tool | Description |
@@ -342,22 +344,23 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | `setup_physics_body` | Configure physics body properties |
 | `get_collision_info` | Get collision shape details |
 
-### 3D Scene Tools (7)
+### 3D Scene Tools (8)
 | Tool | Description |
 |------|-------------|
 | `add_mesh_instance` | Add MeshInstance3D with primitive mesh |
-| `setup_lighting` | Add/configure light nodes |
+| `setup_lighting` | Add/configure light nodes (contact shadows on Godot 4.8+) |
 | `set_material_3d` | Set StandardMaterial3D properties |
 | `setup_environment` | Configure WorldEnvironment |
 | `setup_camera_3d` | Configure Camera3D properties |
 | `add_gridmap` | Set up GridMap node |
 | `get_gridmap_info` | Inspect a GridMap: MeshLibrary, bounds, per-item counts, filtered cells (octant summary on 4.7+) |
+| `add_trail_3d` | Add a Trail3D ribbon drawn behind a moving object (Godot 4.8+) |
 
 ### Particle Tools (5)
 | Tool | Description |
 |------|-------------|
 | `create_particles` | Create GPUParticles2D/3D |
-| `set_particle_material` | Configure ParticleProcessMaterial |
+| `set_particle_material` | Configure ParticleProcessMaterial (`preserve_color` on Godot 4.8+) |
 | `set_particle_color_gradient` | Set color gradient for particles |
 | `apply_particle_preset` | Apply preset (fire, smoke, sparks, etc.) |
 | `get_particle_info` | Get particle system details |
@@ -446,19 +449,19 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | Scene | 10 | 8 | 11 | 9 | 3 | 4 | 5 |
 | Node | **17** | 8 | 0 | 8 | 2 | 3 | 0 |
 | Script | **9** | 5 | 6 | 4 | 0 | 5 | 0 |
-| Editor | **15** | 5 | 1 | 5 | 1 | 3 | 2 |
+| Editor | **16** | 5 | 1 | 5 | 1 | 3 | 2 |
 | Input | **7** | 2 | 0 | 0 | 0 | 0 | 0 |
 | Runtime | **20** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Animation | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | TileMap | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| Theme/UI | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
+| Theme/UI | **9** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Profiling | **2** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Batch/Refactor | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Shader | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Export | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Resource | **4** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Physics | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
-| 3D Scene | **7** | 0 | 0 | 0 | 0 | 0 | 0 |
+| 3D Scene | **8** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Particle | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Navigation | **5** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Audio | **6** | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -470,7 +473,7 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 | Other | 0 | 0 | 9 | 5 | 5 | 2 | 1 |
 | Headless | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
 | Android Deploy | **3** | 0 | 0 | 0 | 0 | 0 | 0 |
-| **Total** | **187** | ~30 | **32** | **39** | **13** | **19** | **10** |
+| **Total** | **190** | ~30 | **32** | **39** | **13** | **19** | **10** |
 
 ### Feature Matrix
 
@@ -495,13 +498,13 @@ Open your Godot project with the plugin enabled, then use Claude Code to interac
 |----------|-------|----------------|
 | **Animation** | 6 tools | Create animations, add tracks, set keyframes — all programmatically |
 | **TileMap** | 6 tools | Set cells, fill rects, query tile data — essential for 2D level design |
-| **Theme/UI** | 8 tools | StyleBox, colors, fonts — build UI themes without manual editor work |
+| **Theme/UI** | 9 tools | StyleBox, colors, fonts — build UI themes without manual editor work |
 | **Profiling** | 2 tools | FPS, memory, draw calls, physics — performance monitoring |
 | **Batch/Refactor** | 7 tools | Find by type, batch property changes, cross-scene updates, dependency analysis |
 | **Shader** | 6 tools | Create/edit shaders, assign materials, set parameters |
 | **Export** | 4 tools | List presets, get export commands, check templates |
 | **Physics** | 6 tools | Set up collision shapes, bodies, raycasts, and layer management |
-| **3D Scene** | 7 tools | Add meshes, cameras, lights, environment, GridMap support |
+| **3D Scene** | 8 tools | Add meshes, cameras, lights, environment, GridMap support |
 | **Particle** | 5 tools | Create particles with custom materials, presets, and gradients |
 | **Navigation** | 5 tools | Configure navigation regions, agents, pathfinding, baking |
 | **Audio** | 6 tools | Complete audio bus system, effects, players, live management |

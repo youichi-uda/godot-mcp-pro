@@ -6,7 +6,7 @@
 
 ## Godot MCP Proとは？
 
-Godot 4エディタに直接接続する169のMCPツールを利用できます。シーンの作成、スクリプトの記述、プレイヤー入力のシミュレーション、実行中のゲームの検査など、ユーザーがこの会話から離れることなく、すべての操作が可能です。すべての変更はGodotのUndoRedoシステムを通じて行われるため、いつでもCtrl+Zで元に戻せます。
+Godot 4エディタに直接接続する190のMCPツールを利用できます。シーンの作成、スクリプトの記述、プレイヤー入力のシミュレーション、実行中のゲームの検査など、ユーザーがこの会話から離れることなく、すべての操作が可能です。すべての変更はGodotのUndoRedoシステムを通じて行われるため、いつでもCtrl+Zで元に戻せます。
 
 ## 基本ワークフロー
 
@@ -54,6 +54,7 @@ set_material_3d      → PBRマテリアル（albedo、metallic、roughness、em
 setup_collision      → 物理ボディにコリジョンシェイプを追加
 setup_physics_body   → 質量、摩擦、重力の設定
 get_gridmap_info     → GridMapを調査：MeshLibrary、使用セルの範囲、アイテム別の数（アイテム/範囲でセルを絞り込み可）
+add_trail_3d         → 動くオブジェクトの後ろに描かれるリボン状の軌跡 Trail3D を追加（Godot 4.8+）
 ```
 
 ### 4. スクリプトの作成と編集
@@ -122,6 +123,7 @@ set_theme_font_size → テキストサイズの調整
 set_theme_stylebox  → 背景、ボーダー、角丸
 connect_signal    → buttonのpressed、value_changedなどを接続
 add_virtual_joystick → 入力アクションを押す画面上のタッチジョイスティック（Godot 4.7+、マウスで試すには input_devices/pointing/emulate_touch_from_mouse を有効化）
+set_theme_sound   → Controlのテーマサウンドオーバーライドを設定/削除：pressed_sound、hover_sound、focus_sound など（Godot 4.8+）
 ```
 
 ### 8. TileMap
@@ -222,6 +224,7 @@ analyze_signal_flow        → シグナル接続を可視化
 detect_circular_dependencies → 循環参照するスクリプト/シーンを検出
 find_unused_resources      → 未使用ファイルのクリーンアップ
 get_performance_monitors   → FPS、メモリ、ドローコール、物理統計
+show_editor_dock           → エディタのドックやメイン画面（2D、3D、Script、Output など）を前面に表示。名前を省略すると一覧を返す（メイン画面以外のドックは Godot 4.6+）
 ```
 
 ## テストとQA

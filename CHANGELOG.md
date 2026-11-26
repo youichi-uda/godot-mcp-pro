@@ -4,6 +4,53 @@ All notable changes to Godot MCP Pro will be documented in this file.
 
 ---
 
+## v1.18.0 — 2026-11-26
+
+**Minor** — Godot 4.8 support work, done against **Godot 4.8 beta 5** (stable is not out yet): three new tools and several upgrades built on the new engine APIs, plus five bug fixes found while testing. The whole tool set was compared between Godot 4.7.2 and 4.8 beta 5 with a 250-step live test in the editor (every category, including running a game and driving it), and no tool behaved differently on 4.8. Every addon script parses on Godot 4.4.1, 4.5.1, 4.6.2, 4.7.2 and 4.8 beta 5. As before, APIs that only exist on newer Godot are looked up at runtime, so the addon still loads on older versions and those features answer with an error naming the version they need.
+
+**Update the server together with the addon** (see the port registry fix below).
+
+### Added — new tools (187 → 190)
+- **`add_trail_3d`** (4.8+) — adds a `Trail3D`, the new ribbon drawn behind a moving object (sword swings, projectiles, tire marks). Limit by lifetime or length, width, color or a color gradient along the trail, billboard or local alignment, mix/add blending, texture tiling. Undoable.
+- **`set_theme_sound`** (4.8+) — sets or removes a theme sound override on a Control: the sound it plays on a UI event (`pressed_sound`, `hover_sound`, `focus_sound`, ...). An unknown name returns the sound items that control type has. Undoable.
+- **`show_editor_dock`** — brings an editor dock or main screen to the front (2D, 3D, Script, Game, asset library, FileSystem, Inspector, Output, Animation, ...), for example before `get_editor_screenshot`; without a name it lists what can be shown and what is visible. Main screens work on every version, other docks on 4.6+. On 4.8, where main screens became docks, they are still switched through `set_main_screen_editor()` because `make_visible()` does not bring them forward.
+
+### Added — upgrades to existing tools
+- **`setup_control`**: `fit_text` (4.8+, Label and RichTextLabel) resizes the font so the text fits the node, between `min_font_size` and `max_font_size`. Undoable with the rest of the call.
+- **`setup_lighting`**: `contact_shadows` and `contact_shadows_blur` (4.8+) for the new screen-space contact shadows. The per-light switch is only part of it — Godot draws them for a DirectionalLight3D with shadows, in Forward+, once the project setting `rendering/lights_and_shadows/contact_shadow/enabled` is on — so the result reports that setting and lists whatever is still missing.
+- **`add_animation_track`**: `interpolation` (nearest, linear, cubic, linear_angle, cubic_angle, and on 4.8+ `makima` / `makima_angle`, which are smooth without overshooting).
+- **`set_particle_material`**: `preserve_color` (4.8+), which keeps the color given by a manual emission or a sub-emitter.
+- **`search_files`**: `fuzzy=true` (4.8+) ranks files with the engine's own `FuzzySearch`, so an abbreviation such as `thmcmd` finds `theme_commands.gd`. Scores are returned; `.uid` sidecar files are skipped.
+- **`get_theme_info`**: lists theme sound overrides on 4.8+.
+- New 4.8 properties that need no dedicated parameter work through `update_property` and show up in `get_node_properties` (verified: `SpinBox.format`, which replaces the deprecated `prefix`/`suffix`, and `TabBar.tab_sizing`).
+
+### Fixed
+- **`bake_navigation_mesh` with an `outline` froze the editor.** Calling `make_polygons_from_outlines()` on the polygon a NavigationRegion2D in the scene tree already holds never returns (reproduced on 4.7.2 and 4.8 beta 5); the connection then died with a heartbeat timeout. The polygons are now built on a copy and assigned, which also makes the change undoable.
+- **Auto-dismiss pressed "Open Anyway" on the missing-dependency dialog.** Loading a scene with a broken dependency — which read-only tools such as `cross_scene_set_property` in dry-run do — raises Godot's "Error loading" dialog, and accepting it opened that scene and made it the edited scene, so the following commands changed and saved the wrong scene. That dialog is now closed instead of accepted.
+- **`get_theme_info` returned an empty result** for any control with an unset color override, which is nearly all of them. It now lists the overrides that are actually set.
+- **`setup_camera_3d` ignored `look_at` when creating a camera**, because `look_at()` fails on a node that is not in the tree yet. A new camera is now aimed by hand, also under a moved parent.
+- **`reload_plugin` left `project.godot` saying the plugin is disabled** for a second or more (longer in a busy editor): Godot writes the file at once on disable but only after a delay on enable, so an editor crash in that window left the plugin off. The enabled state is now written immediately.
+- **macOS 27: "Unable to set TCP no delay option" printed over and over while the editor is idle.** The plugin dialled every port in 6505-6514 every 3 seconds, and each attempt at a port with no server can make Godot print this warning on macOS 27. MCP servers now announce their port in a registry (`~/.godot-mcp-pro/ports/` and the temp directory) and the plugin dials only announced ports, giving up on a port after five failures in a row; with no registry it falls back to scanning with a back-off from 3 to 30 seconds. This fix could not be reproduced without the affected setup and is still awaiting confirmation there.
+- The stdio MCP server now exits when its client closes stdin, instead of lingering and holding its port.
+- The CLI waits up to 35 seconds for the editor, to cover the slower fallback scan.
+
+Once any v1.18.0+ server has run on a machine, the plugin stops scanning ports, so an older server would no longer be found — hence updating both together.
+
+### Changed
+- **Tool count**: Full 190, Lite 88, 3D 100, Minimal 35. `show_editor_dock` is left out of 3D mode to stay within its 100-tool cap.
+
+### Godot 4.8 compatibility notes
+- The three 4.8 changes that could have affected an editor plugin did not: main screens becoming docks (the plugin never used the main-screen API), `ScriptEditor` now extending `EditorDock` (the script tools give the same results), and `ClassDB.can_instantiate` no longer knowing script `class_name`s (`add_node` resolves those separately).
+- Packs written by 4.8 pass `export_patch_pck` validation.
+
+### Notes
+- Verified: parse checks of all 36 addon scripts on 4.4.1, 4.5.1, 4.6.2, 4.7.2 and 4.8 beta 5; the 250-step live comparison on 4.7.2 and 4.8 beta 5 before and after the changes; live tests of every new tool and parameter on 4.8 beta 5 including undo/redo, and of their version errors on 4.7.2; `tsc` clean and 79 server tests passing.
+- Not verified on 4.8: `export_project` with export templates, Android deployment, the .NET build, macOS and Linux. Live testing on 4.4-4.6 was limited to the parse checks this cycle.
+- 4.8 is a beta. This release will be re-checked against the release candidate and the stable build.
+- Not done: the new `AnimationNodeObserver` classes expose no methods or properties yet, and runtime CanvasItem editing in the running game, symbol renaming and the Android SDK manager have no API a plugin can call.
+
+---
+
 ## v1.17.1 — 2026-09-25
 
 **Patch** — v1.17.0 was published on GitHub only; this is the first store release of the 1.17 line and includes everything below plus all of v1.17.0. It is the result of an adversarial review of everything changed since v1.16.0, run with the Codex CLI in 39 rounds until it returned no findings. 98 findings were fixed; each was reproduced or checked against the engine, and verified live on Godot 4.7.2 where it could be. Every addon script still parses on 4.4.1, 4.5.1, 4.6.2 and 4.7.2.

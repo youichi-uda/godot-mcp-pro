@@ -327,6 +327,15 @@ func _find_and_dismiss_dialogs(node: Node) -> void:
 		# Get dialog title/text for logging
 		var title := dialog.title
 		var text := dialog.dialog_text
+		# The "Error loading" dependency dialog is the exception to "accept":
+		# its OK button is "Open Anyway", which opens the broken scene and makes
+		# it the edited scene, so later commands would land in the wrong scene.
+		# It appears whenever a scene with a missing dependency is loaded, even
+		# by a read-only tool. Close it instead.
+		if dialog.is_class("DependencyErrorDialog"):
+			dialog.hide()
+			push_warning("[MCP] Auto-closed dependency error dialog without opening the scene: '%s'" % title)
+			return
 		# Accept the dialog (presses OK / confirms)
 		dialog.get_ok_button().emit_signal("pressed")
 		push_warning("[MCP] Auto-dismissed editor dialog: '%s' — %s" % [title, text])

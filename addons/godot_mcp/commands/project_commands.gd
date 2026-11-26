@@ -104,10 +104,57 @@ func _search_files(params: Dictionary) -> Dictionary:
 	var file_type: String = optional_string(params, "file_type", "")  # e.g. "gd", "tscn"
 	var max_results: int = optional_int(params, "max_results", 50)
 
+	# fuzzy=true ranks every file by Godot's own fuzzy matcher (FuzzySearch,
+	# Godot 4.8+), so "plyrctl" finds "player_controller.gd". The class is
+	# used by name so this file still parses on older versions.
+	if optional_bool(params, "fuzzy", false):
+		if not ClassDB.class_exists("FuzzySearch"):
+			return error_requires_godot("search_files fuzzy=true", "4.8")
+		if max_results < 1:
+			return error_invalid_params("max_results must be 1 or more")
+		var candidates: Array = []
+		_collect_files_recursive(path, file_type, candidates)
+		var searcher: Object = ClassDB.instantiate("FuzzySearch")
+		searcher.set("max_results", max_results)
+		var ranked: Array = searcher.call("search_all", query, PackedStringArray(candidates))
+		var fuzzy_matches: Array = []
+		var scores: Array = []
+		for hit: Variant in ranked:
+			fuzzy_matches.append(hit.get("target"))
+			scores.append(hit.get("score"))
+		return success({
+			"matches": fuzzy_matches,
+			"count": fuzzy_matches.size(),
+			"scores": scores,
+			"fuzzy": true,
+			"files_searched": candidates.size(),
+		})
+
 	var matches: Array = []
 	_search_recursive(path, query, file_type, matches, max_results)
 
 	return success({"matches": matches, "count": matches.size()})
+
+
+## Every file under `path` (hidden entries skipped, like _search_recursive;
+## .uid sidecar files too unless asked for, since each would take a result
+## slot next to its script),
+## optionally limited to one extension.
+func _collect_files_recursive(path: String, file_type: String, out: Array) -> void:
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+	while not file_name.is_empty():
+		if not file_name.begins_with("."):
+			var full_path := path.path_join(file_name)
+			if dir.current_is_dir():
+				_collect_files_recursive(full_path, file_type, out)
+			elif (file_type.is_empty() and file_name.get_extension() != "uid") or file_name.get_extension() == file_type:
+				out.append(full_path)
+		file_name = dir.get_next()
+	dir.list_dir_end()
 
 
 func _search_recursive(path: String, query: String, file_type: String, matches: Array, max_results: int) -> void:

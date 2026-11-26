@@ -14,6 +14,7 @@ func get_commands() -> Dictionary:
 		"setup_camera_3d": _setup_camera_3d,
 		"add_gridmap": _add_gridmap,
 		"get_gridmap_info": _get_gridmap_info,
+		"add_trail_3d": _add_trail_3d,
 	}
 
 
@@ -258,6 +259,23 @@ func _setup_lighting(params: Dictionary) -> Dictionary:
 					(light as SpotLight3D).spot_angle = _optional_float(params, "spot_angle", 25.0)
 					(light as SpotLight3D).spot_range = _optional_float(params, "range", 10.0)
 
+	# Screen-space contact shadows (Godot 4.8+): the per-light switch and blur.
+	# Set through set() after a property check so this file still parses and
+	# runs on older versions.
+	var contact_set := params.has("contact_shadows") or params.has("contact_shadows_blur")
+	if contact_set:
+		if not _object_has_property(light, "shadow_contact_shadows_allow"):
+			light.free()
+			return _error_requires_version("contact_shadows", "4.8")
+		if params.has("contact_shadows_blur"):
+			var blur := _optional_float(params, "contact_shadows_blur", 1.0)
+			if blur < 0.0:
+				light.free()
+				return error_invalid_params("'contact_shadows_blur' must be >= 0")
+			light.set("shadow_contact_shadows_blur", blur)
+		# A blur value alone implies the feature is wanted; contact_shadows=false still wins.
+		light.set("shadow_contact_shadows_allow", optional_bool(params, "contact_shadows", true))
+
 	# Position / rotation
 	light.position = _parse_vector3_param(params, "position", Vector3.ZERO)
 	if params.has("rotation"):
@@ -271,6 +289,27 @@ func _setup_lighting(params: Dictionary) -> Dictionary:
 		"light_type": light_type,
 		"preset": preset,
 	}
+	if contact_set:
+		out["contact_shadows"] = light.get("shadow_contact_shadows_allow")
+		out["contact_shadows_blur"] = light.get("shadow_contact_shadows_blur")
+		# The per-light switch is only half of it: Godot draws contact shadows
+		# for DirectionalLight3D with shadows on, in the Forward+ renderer, and
+		# only while the project-wide setting is enabled (it defaults to off).
+		var project_enabled: bool = ProjectSettings.get_setting(_CONTACT_SHADOW_SETTING, false)
+		out["contact_shadows_project_setting"] = project_enabled
+		var notes: Array = []
+		if out["contact_shadows"]:
+			if not project_enabled:
+				notes.append("Contact shadows stay invisible until the project setting '%s' is true (set_project_setting); it is off by default." % _CONTACT_SHADOW_SETTING)
+			if not light is DirectionalLight3D:
+				notes.append("Godot only draws contact shadows for DirectionalLight3D; on %s the setting is stored but has no visible effect." % light_type)
+			elif not light.shadow_enabled:
+				notes.append("Contact shadows need the light to cast shadows; pass shadows=true.")
+			var renderer := str(ProjectSettings.get_setting("rendering/renderer/rendering_method", "forward_plus"))
+			if renderer != "forward_plus":
+				notes.append("Contact shadows are only supported by the Forward+ renderer (project uses '%s')." % renderer)
+		if not notes.is_empty():
+			out["notes"] = notes
 	if light_type == "AreaLight3D":
 		var area_size: Vector2 = light.get("area_size")
 		out["area_size"] = {"x": area_size.x, "y": area_size.y}
@@ -280,6 +319,16 @@ func _setup_lighting(params: Dictionary) -> Dictionary:
 		var area_tex: Variant = light.get("area_texture")
 		out["area_texture"] = (area_tex as Resource).resource_path if area_tex is Resource else ""
 	return success(out)
+
+
+const _CONTACT_SHADOW_SETTING := "rendering/lights_and_shadows/contact_shadow/enabled"
+
+
+func _object_has_property(obj: Object, property: String) -> bool:
+	for p: Dictionary in obj.get_property_list():
+		if p["name"] == property:
+			return true
+	return false
 
 
 ## Error for a feature that the running Godot does not have (-32601, the same
@@ -648,8 +697,19 @@ func _setup_camera_3d(params: Dictionary) -> Dictionary:
 		camera.rotation_degrees = _parse_vector3_param(params, "rotation", camera.rotation_degrees)
 	if params.has("look_at"):
 		var target := _parse_vector3_param(params, "look_at", Vector3.ZERO)
-		# We need to set position first, then use look_at
-		camera.look_at(target)
+		if camera.is_inside_tree():
+			camera.look_at(target)
+		else:
+			# A new camera is not in the tree yet, where look_at() fails and
+			# leaves the camera unrotated. Aim it by hand: bring the global
+			# target into the future parent's space and build the basis.
+			var local_target := target
+			if parent is Node3D and parent.is_inside_tree():
+				local_target = (parent as Node3D).global_transform.affine_inverse() * target
+			var direction := local_target - camera.position
+			if not direction.is_zero_approx():
+				var up := Vector3.UP if absf(direction.normalized().dot(Vector3.UP)) < 0.999 else Vector3.FORWARD
+				camera.basis = Basis.looking_at(direction, up)
 
 	# Environment override
 	if params.has("environment_path"):
@@ -946,3 +1006,109 @@ func _get_gridmap_info(params: Dictionary) -> Dictionary:
 			}
 
 	return success(info)
+
+
+## ─── 8. add_trail_3d (Godot 4.8+) ────────────────────────────────────────
+
+## Trail3D / LineBase3D enum values by request name. The classes do not exist
+## before Godot 4.8, so they are never referenced statically: the constants
+## are resolved by name at runtime (verified on 4.8 beta 5: LIMIT_MODE_LIFETIME=0,
+## LIMIT_MODE_MAX_LENGTH=1; MESH_ALIGNMENT_LOCAL=0, _BILLBOARD=1;
+## MATERIAL_MODE_MIX=0, _ADD=1; TILING_MODE_STRETCH=0, _TILE=1).
+const _TRAIL_ENUMS := {
+	"limit_mode": {"class": "Trail3D", "values": {"lifetime": "LIMIT_MODE_LIFETIME", "max_length": "LIMIT_MODE_MAX_LENGTH"}},
+	"alignment": {"class": "LineBase3D", "property": "mesh_alignment", "values": {"local": "MESH_ALIGNMENT_LOCAL", "billboard": "MESH_ALIGNMENT_BILLBOARD"}},
+	"material_mode": {"class": "LineBase3D", "values": {"mix": "MATERIAL_MODE_MIX", "add": "MATERIAL_MODE_ADD"}},
+	"tiling_mode": {"class": "LineBase3D", "values": {"stretch": "TILING_MODE_STRETCH", "tile": "TILING_MODE_TILE"}},
+}
+## Numeric Trail3D properties -> [request key, minimum (exclusive when the
+## third entry is true)].
+const _TRAIL_FLOATS := {
+	"lifetime": ["lifetime", 0.0, true],
+	"max_length": ["max_length", 0.0, true],
+	"width": ["width", 0.0, true],
+	"tiling_multiplier": ["tiling_multiplier", 0.0, true],
+	"min_section_length": ["min_section_length", 0.0, false],
+}
+
+
+## Adds a Trail3D: a ribbon that follows the node as it moves. Parent it to
+## the moving object (a sword tip, a projectile, a wheel).
+func _add_trail_3d(params: Dictionary) -> Dictionary:
+	var root := get_edited_root()
+	if root == null:
+		return error_no_scene()
+	if not ClassDB.class_exists("Trail3D"):
+		return _error_requires_version("add_trail_3d", "4.8")
+
+	var parent_path: String = optional_string(params, "parent_path", ".")
+	var parent := find_node_by_path(parent_path)
+	if parent == null:
+		return error_not_found("Parent node '%s'" % parent_path)
+
+	# Validate everything before the node exists, so a bad value leaves nothing behind.
+	var values := {}
+	for key: String in _TRAIL_ENUMS:
+		if not params.has(key):
+			continue
+		var spec: Dictionary = _TRAIL_ENUMS[key]
+		var requested := str(params[key]).to_lower()
+		if not (spec["values"] as Dictionary).has(requested):
+			return error_invalid_params("Unknown %s '%s'. Valid: %s" % [key, params[key], ", ".join((spec["values"] as Dictionary).keys())])
+		values[spec.get("property", key)] = ClassDB.class_get_integer_constant(spec["class"], spec["values"][requested])
+	for key: String in _TRAIL_FLOATS:
+		if not params.has(key):
+			continue
+		if not (params[key] is int or params[key] is float):
+			return error_invalid_params("'%s' must be a number" % key)
+		var number := float(params[key])
+		var limit: Array = _TRAIL_FLOATS[key]
+		if number < limit[1] or (limit[2] and number == limit[1]):
+			return error_invalid_params("'%s' must be %s %s" % [key, ">" if limit[2] else ">=", limit[1]])
+		values[limit[0]] = number
+	if params.has("color"):
+		values["color"] = _parse_color_param(params, "color", Color.WHITE)
+	if params.has("emitting"):
+		values["emitting"] = optional_bool(params, "emitting", true)
+	if params.has("pin_uv"):
+		values["pin_uv"] = optional_bool(params, "pin_uv", false)
+
+	if params.has("color_gradient"):
+		if not params["color_gradient"] is Array or (params["color_gradient"] as Array).size() < 2:
+			return error_invalid_params("'color_gradient' must be an array of at least two {offset, color} stops")
+		var offsets := PackedFloat32Array()
+		var colors := PackedColorArray()
+		for stop: Variant in params["color_gradient"]:
+			if not stop is Dictionary or not stop.has("offset") or not stop.has("color"):
+				return error_invalid_params("Each color_gradient stop must be {offset, color}")
+			offsets.append(clampf(float(stop["offset"]), 0.0, 1.0))
+			colors.append(_parse_color_param(stop, "color", Color.WHITE))
+		var gradient := Gradient.new()
+		gradient.offsets = offsets
+		gradient.colors = colors
+		values["color_gradient"] = gradient
+
+	var trail: Node3D = ClassDB.instantiate("Trail3D") as Node3D
+	if trail == null:
+		return error_internal("Could not instantiate Trail3D")
+	trail.name = optional_string(params, "name", "Trail3D")
+	for property: String in values:
+		trail.set(property, values[property])
+	trail.position = _parse_vector3_param(params, "position", Vector3.ZERO)
+
+	_add_child_with_undo(trail, parent, root, "MCP: Add Trail3D")
+
+	var limit_mode_names := {}
+	for mode_name: String in _TRAIL_ENUMS["limit_mode"]["values"]:
+		limit_mode_names[ClassDB.class_get_integer_constant("Trail3D", _TRAIL_ENUMS["limit_mode"]["values"][mode_name])] = mode_name
+	return success({
+		"node_path": str(root.get_path_to(trail)),
+		"name": str(trail.name),
+		"limit_mode": limit_mode_names.get(trail.get("limit_mode"), str(trail.get("limit_mode"))),
+		"lifetime": trail.get("lifetime"),
+		"max_length": trail.get("max_length"),
+		"width": trail.get("width"),
+		"emitting": trail.get("emitting"),
+		"has_color_gradient": trail.get("color_gradient") != null,
+		"note": "The trail is drawn as the node moves: parent it to the moving object. It stays empty while the node is still.",
+	})
