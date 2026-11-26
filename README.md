@@ -2,6 +2,15 @@
 
 Premium MCP (Model Context Protocol) server for AI-powered Godot game development. Connects AI assistants like Claude directly to your Godot editor with **190 powerful tools**.
 
+## See it in action
+
+Games built in the Godot editor by Claude Code through Godot MCP Pro, from plain-English prompts — each with the build video, the exact prompts and the bugs the AI found and fixed itself by playtesting:
+
+- **[Showcase: 7 AI-built games](https://godot-mcp.abyo.net/showcase/)** — survivors-like, tower defense, platformer, match-3, bullet hell, 3D ball roller
+- **[Pop Survivors PLUS](https://y1uda.itch.io/pop-survivors-plus)** — a survivors-like grown over 5 prompts, playable in your browser
+
+**Guides:** [Claude Code + Godot](https://godot-mcp.abyo.net/guides/claude-code-godot.html) · [Cursor + Godot](https://godot-mcp.abyo.net/guides/cursor-godot.html) · [AI playtesting](https://godot-mcp.abyo.net/guides/godot-ai-playtesting.html) · [Windows setup & fixes](https://godot-mcp.abyo.net/guides/godot-mcp-windows-setup.html) · [all guides](https://godot-mcp.abyo.net/guides/)
+
 ## Architecture
 
 ```
